@@ -13,11 +13,13 @@ window.MQ = window.MQ || {};
   const BREAK_MS = 5000;        // écran intertitre entre deux musiques
   const FLASH_MS = 1000;
   const GRACE_MS = 6000;        // marge pour le chargement de l'extrait chez chacun
+  const LAST_CALL_MS = 1500;    // après le premier « temps écoulé », délai laissé aux autres
 
   // Barème (réponse écrite)
   const PTS_ARTIST = 10;
   const PTS_TITLE = 10;
   const PTS_HALF_TITLE = 5;
+  const PTS_HALF_ARTIST = 5;
   const PTS_CHOICE = 20;        // mode 4 propositions : artiste + titre d'un coup
   // Bonus de série : manches d'affilée avec au moins l'artiste ou le titre trouvé.
   // 2e manche : +10, 3e : +10, 4e : +10, puis +15 à chaque manche.
@@ -46,7 +48,8 @@ window.MQ = window.MQ || {};
     return MQ.catalog.filter(s => cat.test(s) && level.test(s));
   };
 
-  const freshState = () => ({ artist: false, title: 0, choice: null, done: false, timeup: false, guesses: 0 });
+  // artist et title : 0, 5 (à moitié) ou 10 (trouvé)
+  const freshState = () => ({ artist: 0, title: 0, choice: null, done: false, timeup: false, guesses: 0 });
 
   class Engine {
     /** send(toId|null, msg) : null = tout le monde. */
@@ -181,7 +184,13 @@ window.MQ = window.MQ || {};
       const st = r.ps.get(id);
       if (msg.id !== r.id || !st || !this.players.has(id)) return;
 
-      if (msg.t === 'timeup') { st.timeup = true; this.checkDone(); return; }
+      if (msg.t === 'timeup') {
+        st.timeup = true;
+        // Le premier chrono terminé lance un court délai pour les retardataires, au lieu d'attendre la marge entière.
+        if (!r.closing) { r.closing = true; if (!this.paused) this.schedule(() => this.finishRound(), LAST_CALL_MS); }
+        this.checkDone();
+        return;
+      }
       if (msg.t !== 'guess' || st.done) return;
 
       const song = r.track.song;
@@ -190,21 +199,22 @@ window.MQ = window.MQ || {};
       if (this.settings.answer === 'choice') {
         st.choice = msg.choice;
         const ok = r.options[msg.choice] === song;
-        if (ok) { st.artist = true; st.title = PTS_TITLE; }
+        if (ok) { st.artist = PTS_ARTIST; st.title = PTS_TITLE; }
         st.done = true;
         result = 'sent'; // on ne dévoile qu'à l'intertitre
       } else {
         const text = String(msg.text || '').slice(0, 120);
         const g = MQ.match.judgeGuess(text, song);
-        if (g.artist) st.artist = true;
+        if (g.artist === 'full') st.artist = PTS_ARTIST;
+        else if (g.artist === 'half' && st.artist < PTS_HALF_ARTIST) st.artist = PTS_HALF_ARTIST;
         if (g.title === 'full') st.title = PTS_TITLE;
         else if (g.title === 'half' && st.title < PTS_HALF_TITLE) st.title = PTS_HALF_TITLE;
-        result = (g.artist || g.title === 'full') ? 'good' : g.title === 'half' ? 'half' : 'bad';
-        st.done = st.artist && st.title === PTS_TITLE;
+        result = (g.artist === 'full' || g.title === 'full') ? 'good' : (g.artist || g.title) ? 'half' : 'bad';
+        st.done = st.artist === PTS_ARTIST && st.title === PTS_TITLE;
       }
       this.send(id, {
         t: 'feedback', id: r.id, text: msg.text, result, done: st.done,
-        artist: st.artist ? song.artist : null,
+        artist: st.artist === PTS_ARTIST ? song.artist : st.artist ? 'half' : null,
         title: st.title === PTS_TITLE ? song.title : st.title ? 'half' : null,
         pts: this.roundPoints(st)
       });
@@ -214,7 +224,7 @@ window.MQ = window.MQ || {};
 
     roundPoints(st) {
       if (this.settings.answer === 'choice') return st.artist ? PTS_CHOICE : 0;
-      return (st.artist ? PTS_ARTIST : 0) + (st.title === PTS_TITLE ? PTS_TITLE : st.title ? PTS_HALF_TITLE : 0);
+      return st.artist + st.title;
     }
 
     progress() {
@@ -244,7 +254,7 @@ window.MQ = window.MQ || {};
         const st = r.ps.get(p.id);
         if (!st) return;
         const base = this.roundPoints(st);
-        const good = st.artist || st.title === PTS_TITLE;
+        const good = st.artist === PTS_ARTIST || st.title === PTS_TITLE;
         p.streak = good ? p.streak + 1 : 0;
         const bonus = good ? streakBonus(p.streak) : 0;
         p.score += base + bonus;
@@ -285,5 +295,5 @@ window.MQ = window.MQ || {};
   }
 
   MQ.BlindtestEngine = Engine;
-  MQ.BLINDTEST_RULES = { PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_CHOICE, ROUND_SECONDS, BREAK_MS };
+  MQ.BLINDTEST_RULES = { PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS };
 })(window.MQ);

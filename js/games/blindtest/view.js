@@ -83,7 +83,7 @@
             h('span.meta-line', p.song.artist + ' · ' + p.song.year),
             h('div.prev-finders', finders.length
               ? finders.map(r => {
-                  const full = p.answer === 'choice' ? true : r.artist && r.title === R.PTS_TITLE;
+                  const full = p.answer === 'choice' ? true : r.artist === R.PTS_ARTIST && r.title === R.PTS_TITLE;
                   return h('span.initials' + (full ? '.full' : '.part'), {
                     title: r.name + (full ? ' : tout trouvé' : ' : trouvé en partie')
                   }, initials(r.name));
@@ -368,7 +368,7 @@
         answerArea = h('div.answer-zone',
           h('div.badges', artistBadge, titleBadge),
           h('form.guess-form', { onsubmit: e => { e.preventDefault(); sendGuess(); } }, input, sendBtn),
-          h('p.meta', 'Artiste ' + R.PTS_ARTIST + ' pts · titre ' + R.PTS_TITLE + ' pts · la moitié des mots du titre ' + R.PTS_HALF_TITLE + ' pts. Tu peux essayer autant de fois que tu veux.'),
+          h('p.meta', 'Artiste ' + R.PTS_ARTIST + ' pts · titre ' + R.PTS_TITLE + ' pts · la moitié des mots de l’artiste ou du titre : ' + R.PTS_HALF_TITLE + ' pts. Tu peux essayer autant de fois que tu veux.'),
           guessList);
       }
 
@@ -406,7 +406,7 @@
           input.classList.remove('good', 'half', 'bad');
           void input.offsetWidth;
           input.classList.add(fb.result);
-          setBadge(artistBadge, fb.artist ? 'ok' : null, fb.artist);
+          setBadge(artistBadge, fb.artist === 'half' ? 'half' : fb.artist ? 'ok' : null, fb.artist === 'half' ? 'à moitié' : fb.artist);
           setBadge(titleBadge, fb.title === 'half' ? 'half' : fb.title ? 'ok' : null, fb.title === 'half' ? 'à moitié' : fb.title);
         }
         roundPts = fb.pts;
@@ -424,7 +424,7 @@
         const rows = live.map(p => {
           const prev = before.get(p.id) || { score: 0, streak: 0 };
           let now = 0;
-          if (msg.answer === 'text') now = (p.artist ? R.PTS_ARTIST : 0) + (p.title === R.PTS_TITLE ? R.PTS_TITLE : p.title ? R.PTS_HALF_TITLE : 0);
+          if (msg.answer === 'text') now = (p.artist || 0) + (p.title || 0);
           if (p.id === S.myId) now = roundPts;
           return { p, total: prev.score + now, streak: prev.streak };
         }).sort((a, b) => b.total - a.total);
@@ -434,7 +434,7 @@
           stars(streak) || h('span'),
           h('span.sb-dots', msg.answer === 'choice'
             ? h('span.dot' + (p.done ? '.on' : ''), { title: 'a répondu' })
-            : [h('span.dot' + (p.artist ? '.on' : ''), { title: 'artiste' }),
+            : [h('span.dot' + (p.artist === R.PTS_ARTIST ? '.on' : p.artist ? '.mid' : ''), { title: 'artiste' }),
                h('span.dot' + (p.title === R.PTS_TITLE ? '.on' : p.title ? '.mid' : ''), { title: 'titre' })]),
           h('span.sb-score', total + ' pts'))));
       }
@@ -445,7 +445,7 @@
         panel.classList.toggle('is-paused', paused);
         if (paused) {
           pausedAt = performance.now();
-          cancelAnimationFrame(raf);
+          clearTimeout(raf);
           MQ.player.pause();
           eq.classList.remove('on');
           if (input) input.disabled = sendBtn.disabled = true;
@@ -474,32 +474,43 @@
       }
       function lock() {
         stopped = true;
-        cancelAnimationFrame(raf);
+        clearTimeout(raf);
         replayBtn.hidden = true;
         if (buttons) buttons.forEach(b => { b.disabled = true; });
         if (input) { input.disabled = sendBtn.disabled = true; }
       }
 
+      // Le chrono ne dépasse jamais la fin de l'extrait : quand la musique s'arrête, la manche s'arrête.
+      let limit = seconds;
       function startTimer() {
         if (startedAt != null) return;
         startedAt = performance.now();
+        const a = MQ.player.audio;
+        if (msg.listen !== 'flash' && isFinite(a.duration) && a.duration > 5) limit = Math.min(seconds, a.duration - a.currentTime);
         tick();
       }
       function tick() {
+        clearTimeout(raf);
         if (stopped || S.paused) return;
-        const left = Math.max(0, seconds - (performance.now() - startedAt - pausedMs) / 1000);
-        timerFill.style.transform = 'scaleX(' + (left / seconds) + ')';
+        const left = Math.max(0, limit - (performance.now() - startedAt - pausedMs) / 1000);
+        timerFill.style.transform = 'scaleX(' + (left / limit) + ')';
         timerText.textContent = Math.ceil(left) + ' s';
         timerFill.classList.toggle('hurry', left < 5);
-        if (left <= 0) {
-          lock();
-          status.textContent = 'Temps écoulé !';
-          toHost({ t: 'timeup', id: msg.id });
-          return;
-        }
-        raf = requestAnimationFrame(tick);
+        if (left <= 0) return timeUp();
+        raf = setTimeout(tick, 100); // setTimeout plutôt que l'animation : continue aussi dans un onglet en arrière-plan
       }
-      screenCleanups.push(() => cancelAnimationFrame(raf));
+      function timeUp() {
+        if (stopped) return;
+        lock();
+        eq.classList.remove('on');
+        timerFill.style.transform = 'scaleX(0)';
+        timerText.textContent = '0 s';
+        status.textContent = 'Temps écoulé !';
+        toHost({ t: 'timeup', id: msg.id });
+      }
+      const onEnded = () => { if (msg.listen !== 'flash' && startedAt != null && !S.paused) timeUp(); };
+      MQ.player.audio.addEventListener('ended', onEnded);
+      screenCleanups.push(() => { clearTimeout(raf); MQ.player.audio.removeEventListener('ended', onEnded); });
 
       function playOnce() {
         return msg.listen === 'flash'
@@ -551,11 +562,11 @@
       if (S.round && S.round.listen === 'flash') MQ.player.play(S.round.previewUrl).catch(() => {});
 
       const text = S.round && S.round.answer === 'text';
-      const tone = !mine ? '.bad' : (mine.artist && mine.title === R.PTS_TITLE) ? '.good' : mine.pts ? '.half' : '.bad';
+      const tone = !mine ? '.bad' : (mine.artist === R.PTS_ARTIST && mine.title === R.PTS_TITLE) ? '.good' : mine.pts ? '.half' : '.bad';
       const parts = [];
       if (mine) {
         if (text) {
-          parts.push(h('span.part' + (mine.artist ? '.ok' : '.ko'), 'Artiste ' + (mine.artist ? '+' + R.PTS_ARTIST : '0')));
+          parts.push(h('span.part' + (mine.artist === R.PTS_ARTIST ? '.ok' : mine.artist ? '.mid' : '.ko'), 'Artiste ' + (mine.artist ? '+' + mine.artist : '0')));
           parts.push(h('span.part' + (mine.title === R.PTS_TITLE ? '.ok' : mine.title ? '.mid' : '.ko'), 'Titre ' + (mine.title ? '+' + mine.title : '0')));
         } else {
           parts.push(h('span.part' + (mine.base ? '.ok' : '.ko'), mine.base ? 'Bonne réponse +' + mine.base : 'Mauvaise réponse'));
@@ -592,9 +603,9 @@
         ? h('div.field',
             h('span.label', 'Cette manche'),
             h('ol.board', msg.results.slice().sort((a, b) => b.pts - a.pts).map(r => h('li' + (r.id === S.myId ? '.me' : ''),
-              h('span.board-name', h('span.initials' + (r.base ? (text && !(r.artist && r.title === R.PTS_TITLE) ? '.part' : '.full') : ''), initials(r.name)), ' ', r.name),
+              h('span.board-name', h('span.initials' + (r.base ? (text && !(r.artist === R.PTS_ARTIST && r.title === R.PTS_TITLE) ? '.part' : '.full') : ''), initials(r.name)), ' ', r.name),
               h('span.board-answer', text
-                ? [h('span.dot' + (r.artist ? '.on' : '')), ' artiste ', h('span.dot' + (r.title === R.PTS_TITLE ? '.on' : r.title ? '.mid' : '')), ' titre']
+                ? [h('span.dot' + (r.artist === R.PTS_ARTIST ? '.on' : r.artist ? '.mid' : '')), ' artiste ', h('span.dot' + (r.title === R.PTS_TITLE ? '.on' : r.title ? '.mid' : '')), ' titre']
                 : r.base ? 'bonne réponse' : 'raté'),
               h('span.board-pts', '+' + r.pts)))))
         : null;
@@ -637,7 +648,7 @@
       const leader = isLeader();
       const me = msg.standings.find(p => p.id === S.myId) || { score: S.score };
       const rank = msg.standings.findIndex(p => p.id === S.myId) + 1;
-      const perfect = S.history.filter(x => x.res.artist && x.res.title === R.PTS_TITLE).length;
+      const perfect = S.history.filter(x => x.res.artist === R.PTS_ARTIST && x.res.title === R.PTS_TITLE).length;
 
       let recordLine = '';
       if (S.role === 'solo') {
@@ -658,7 +669,7 @@
         h('div.field',
           h('span.label', 'Tes réponses'),
           h('ol.recap', S.history.map(x => {
-            const full = x.res.artist && x.res.title === R.PTS_TITLE;
+            const full = x.res.artist === R.PTS_ARTIST && x.res.title === R.PTS_TITLE;
             return h('li' + (full ? '.ok' : x.res.pts ? '.half' : '.ko'),
               h('span.mark', full ? '✓' : x.res.pts ? '½' : '✗'),
               h('span.recap-text', h('strong', x.song.title), ' – ' + x.song.artist),

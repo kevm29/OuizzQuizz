@@ -98,10 +98,17 @@ window.MQ = window.MQ || {};
     });
   }
 
+  /** Pareil pour l'artiste : chaque artiste crédité (« A Featuring B ») compte séparément. */
+  function halfArtist(text, artists) {
+    const names = [];
+    artists.forEach(a => a.split(/\s+(?:featuring|feat\.?|ft\.?|with|duet with|x)\s+/i).forEach(n => names.push(n)));
+    return halfTitle(text, names);
+  }
+
   /**
    * Corrige une saisie libre pour une chanson.
    * La saisie peut contenir l'artiste, le titre, ou les deux (« queen bohemian rhapsody »).
-   * Renvoie { artist: bool, title: 'full' | 'half' | null }.
+   * Renvoie { artist: 'full' | 'half' | null, title: 'full' | 'half' | null }.
    */
   function judgeGuess(text, song) {
     const artists = [song.artist].concat(song.artistAlt || []);
@@ -119,8 +126,8 @@ window.MQ = window.MQ || {};
       }
     }
     if (!title && halfTitle(text, titles)) title = 'half';
-    return { artist, title };
+    return { artist: artist ? 'full' : halfArtist(text, artists) ? 'half' : null, title };
   }
 
-  MQ.match = { normalize, levenshtein, tolerance, isMatch, judgeGuess, halfTitle };
+  MQ.match = { normalize, levenshtein, tolerance, isMatch, judgeGuess, halfTitle, halfArtist };
 })(window.MQ);

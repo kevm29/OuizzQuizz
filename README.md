@@ -11,8 +11,9 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 ## Règles de la réponse écrite
 
 - Une seule barre de saisie : on peut taper l'artiste, le titre, ou les deux d'un coup (« queen bohemian rhapsody »). Essais illimités pendant les 30 s de la manche.
-- Artiste trouvé : 10 pts. Titre trouvé : 10 pts. La moitié des mots importants du titre (hors petits mots comme « le », « the », « de »…) : 5 pts, qui passent à 10 si on trouve ensuite le titre complet.
-- Chaque essai s'affiche en **vert** (bon), **jaune** (titre à moitié) ou **rouge** (faux). Quand l'artiste et le titre sont trouvés, la saisie se bloque.
+- Artiste trouvé : 10 pts. Titre trouvé : 10 pts. La moitié des mots importants de l'artiste ou du titre (hors petits mots comme « le », « the », « de »…) : 5 pts, qui passent à 10 si on trouve ensuite le nom complet. Pour « A Featuring B », chaque artiste crédité compte à part.
+- La manche s'arrête quand l'extrait se termine (30 s au plus). En multijoueur, dès qu'un chrono est fini, les autres ont 1,5 s.
+- Chaque essai s'affiche en **vert** (bon), **jaune** (à moitié) ou **rouge** (faux). Quand l'artiste et le titre sont trouvés, la saisie se bloque.
 - Bonus de série, pour chaque manche d'affilée où on a trouvé au moins l'artiste ou le titre complet : +10 à la 2e, +10 à la 3e, +10 à la 4e, puis +15 à chaque manche suivante.
 - Entre deux musiques, un écran intertitre de 5 s montre la réponse et les points, puis la musique suivante démarre toute seule.
 - Casse, accents, ponctuation, espaces et « The / Le / La / Les » au début sont ignorés.
