@@ -105,7 +105,7 @@ MQ.classics = [
 
   const big = (MQ.bigCatalogRows || []).map(r => ({
     year: r[0], artist: r[1], title: r[2], fame: r[3], score: r[4],
-    source: r[5], frRank: r[6], usPeak: r[7], usWeeks: r[8], fr: !!r[9]
+    source: r[5], frRank: r[6], usPeak: r[7], usWeeks: r[8], fr: !!r[9], genre: r[10] || null
   }));
   const seen = new Map(big.map(s => [key(s), s]));
   const extra = [];
@@ -123,8 +123,11 @@ MQ.classics = [
    * au hit-parade français (n°1 = 1) et le succès au Billboard (pic + semaines, pondéré 0,85),
    * avec un bonus si le titre a marché des deux côtés. Le score 0-100 départage les ex aequo.
    */
+  // Titres choisis à la main (source CLASSIQUE) : pas de classement, on suit leur célébrité 1-5
+  // (5 ≈ un top 10 français, 1 ≈ titre pour connaisseurs).
+  const curated = [0, 0.05, 0.2, 0.4, 0.6, 0.85];
   MQ.fineFame = function (s) {
-    if (s.frRank == null && s.usPeak == null) return s.classic ? 2 : 0;
+    if (s.frRank == null && s.usPeak == null) return s.classic ? 2 : (curated[s.fame] || 0) + (s.score || 0) / 1000;
     const fr = s.frRank ? (51 - Math.min(s.frRank, 50)) / 50 : 0;
     const us = s.usPeak ? 0.5 * Math.pow(1 - (s.usPeak - 1) / 100, 2) + 0.5 * Math.min(s.usWeeks || 0, 40) / 40 : 0;
     return Math.max(fr, 0.85 * us) + 0.25 * Math.min(fr, us) + (s.score || 0) / 1000 + (s.classic ? 0.2 : 0);
@@ -147,7 +150,8 @@ MQ.levels = [
 
 MQ.categories = [
   { id: 'all', label: 'Toutes les années', test: () => true },
-  { id: '6070', label: 'Années 60–70', test: s => s.year < 1980 },
+  { id: 'old', label: 'Avant 1960', test: s => s.year < 1960 },
+  { id: '6070', label: 'Années 60–70', test: s => s.year >= 1960 && s.year < 1980 },
   { id: '80', label: 'Années 80', test: s => s.year >= 1980 && s.year < 1990 },
   { id: '90', label: 'Années 90', test: s => s.year >= 1990 && s.year < 2000 },
   { id: '2000', label: 'Années 2000', test: s => s.year >= 2000 && s.year < 2010 },
