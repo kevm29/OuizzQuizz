@@ -10,6 +10,7 @@
     { id: 'normal', label: 'Extrait 30 s', help: 'L’extrait tourne pendant que tu cherches.' },
     { id: 'flash', label: 'Flash 1 seconde', help: 'Une seule seconde de musique (réécoutable 2 fois), sur les 10 % de titres les plus connus.' }
   ];
+  const REFRAIN_HELP = { help: 'Une ligne du refrain s’affiche, puis une autre toutes les 10 s (4 au plus), le titre caché en astérisques. Bonus si tu trouves dès la 1re ligne (+20), la 2e (+10) ou la 3e (+5).' };
   const ANSWER = [
     { id: 'text', label: 'Écrire la réponse', help: 'Une seule barre, essais illimités, jusqu’à 3 fautes tolérées. Artiste 20 pts, titre 20 pts, moitié de l’un ou l’autre 10 pts. À plusieurs : +30 %, +20 %, +10 % pour les 3 premiers à trouver.' },
     { id: 'choice', label: '4 propositions', help: 'Choisis le bon titre : 40 pts.' }
@@ -128,16 +129,17 @@
     function settingsBlock(onChange, readOnly) {
       const set = (k, v) => { settings[k] = v; saveSettings(); onChange(); };
       const pool = MQ.poolFor(settings);
-      const listen = LISTEN.find(l => l.id === settings.listen);
+      const refrain = settings.listen === 'refrain';
+      const listen = refrain ? REFRAIN_HELP : LISTEN.find(l => l.id === settings.listen);
       const answer = ANSWER.find(a => a.id === settings.answer);
       return h('div.settings',
-        chipGroup('Écoute', LISTEN, settings.listen, v => set('listen', v), readOnly),
+        refrain ? null : chipGroup('Écoute', LISTEN, settings.listen, v => set('listen', v), readOnly),
         chipGroup('Réponse', ANSWER, settings.answer, v => set('answer', v), readOnly),
         chipGroup('Manches', [5, 10, 15].map(n => ({ id: n, label: n + ' manches' })), settings.rounds, v => set('rounds', v), readOnly),
-        settings.listen === 'flash'
+        settings.listen !== 'normal'
           ? null
           : chipGroup('Niveau', MQ.levels.map(l => ({ id: l.id, label: l.label })), settings.level, v => set('level', v), readOnly),
-        settings.listen === 'flash'
+        settings.listen !== 'normal'
           ? null
           : chipGroup('Période', MQ.categories.map(c => ({ id: c.id, label: c.label })), settings.category, v => set('category', v), readOnly),
         h('p.meta', listen.help + ' ' + answer.help + ' ' + pool.length.toLocaleString('fr-FR') + ' titres possibles.')
@@ -173,15 +175,17 @@
       const title = h('h1.display');
       const settingsHost = h('div');
       const renderSettings = () => {
-        title.textContent = settings.listen === 'flash' ? 'Flash 1 seconde' : 'Blind test';
+        title.textContent = settings.listen === 'flash' ? 'Flash 1 seconde' : settings.listen === 'refrain' ? 'Refrain' : 'Blind test';
         settingsHost.replaceChildren(settingsBlock(renderSettings));
       };
       renderSettings();
 
       root.append(h('section.panel.setup',
-        h('p.eyebrow', 'Blind test'),
+        h('p.eyebrow', settings.listen === 'refrain' ? 'Paroles' : 'Blind test'),
         title,
-        h('p.lede', 'Un extrait démarre : trouve l’artiste et le titre avant la fin du chrono de 30 secondes. Bonus de série dès 2 manches réussies d’affilée. Seul ou à plusieurs en ligne avec un code de partie.'),
+        settings.listen === 'refrain'
+          ? h('p.lede', 'Pas de musique : une phrase du refrain apparaît, puis une deuxième, une troisième, une quatrième. Trouve l’artiste et le titre le plus tôt possible. Seul ou à plusieurs en ligne avec un code de partie.')
+          : h('p.lede', 'Un extrait démarre : trouve l’artiste et le titre avant la fin du chrono de 30 secondes. Bonus de série dès 2 manches réussies d’affilée. Seul ou à plusieurs en ligne avec un code de partie.'),
         h('div.field', h('label.label', { htmlFor: 'player-name' }, 'Ton pseudo'), nameInput),
         settingsHost,
         errBox,
@@ -267,7 +271,7 @@
           if (S.role === 'guest') settings = Object.assign({}, settings, msg.settings);
           if (S.role !== 'solo' && msg.state === 'lobby') showLobby();
           break;
-        case 'loading': if (S.screen !== 'round') showWaiting('Chargement de l’extrait…'); break;
+        case 'loading': if (S.screen !== 'round') showWaiting(settings.listen === 'refrain' ? 'Recherche du refrain…' : 'Chargement de l’extrait…'); break;
         case 'round': showRound(msg); break;
         case 'progress': if (S.onProgress) S.onProgress(msg.players); break;
         case 'feedback': if (S.onFeedback) S.onFeedback(msg); break;
@@ -304,7 +308,7 @@
         h('div.code-card',
           h('span.label', 'Code'),
           h('p.code', S.code),
-          h('p.meta', 'Tes amis ouvrent le jeu, cliquent sur Blind test et entrent ce code. Ou envoie-leur le lien.'),
+          h('p.meta', 'Tes amis ouvrent le jeu, cliquent sur ' + (settings.listen === 'refrain' ? 'Refrain' : 'Blind test') + ' et entrent ce code. Ou envoie-leur le lien.'),
           copyBtn
         ),
         h('div.field',
@@ -337,7 +341,9 @@
 
       const timerFill = h('div.timer-fill');
       const timerText = h('span.timer-text', seconds + ' s');
-      const status = h('p.status', 'Écoute…');
+      const refrain = msg.listen === 'refrain';
+      const status = h('p.status', refrain ? 'Ligne 1 / ' + msg.lines.length : 'Écoute…');
+      const lyricLines = refrain ? msg.lines.map((l, i) => h('li.lyric' + (i ? '' : '.on'), { hidden: i > 0 }, l)) : [];
       const eq = MQ.equalizer(9);
       const launchBtn = h('button.btn.ghost', { type: 'button', hidden: true, onclick: begin }, 'Lancer l’extrait');
       const replayBtn = h('button.btn.ghost#replay-btn', { type: 'button', hidden: true, onclick: replay }, 'Réécouter (2)');
@@ -380,7 +386,9 @@
           msg.listen === 'flash' ? h('span.pill.streak', 'Flash 1 s') : null,
           pauseBtn),
         banner,
-        h('div.stage', eq, status, h('div.stage-actions', launchBtn, replayBtn)),
+        refrain
+          ? h('div.stage.lyrics-stage', h('ol.lyrics', { 'aria-live': 'polite' }, lyricLines), status)
+          : h('div.stage', eq, status, h('div.stage-actions', launchBtn, replayBtn)),
         h('div.timer', { role: 'progressbar', 'aria-label': 'Temps restant' }, timerFill, timerText),
         answerArea,
         h('div.side',
@@ -459,7 +467,7 @@
           MQ.player.resume();
           replayBtn.disabled = false;
           if (!stopped) {
-            if (msg.listen !== 'flash' && startedAt != null) eq.classList.add('on');
+            if (!refrain && msg.listen !== 'flash' && startedAt != null) eq.classList.add('on');
             if (startedAt != null) {
               if (input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
               if (buttons) buttons.forEach(b => { b.disabled = false; });
@@ -496,7 +504,7 @@
         if (startedAt != null) return;
         startedAt = performance.now();
         const a = MQ.player.audio;
-        if (msg.listen !== 'flash' && isFinite(a.duration) && a.duration > 5) limit = Math.min(seconds, a.duration - a.currentTime);
+        if (!refrain && msg.listen !== 'flash' && isFinite(a.duration) && a.duration > 5) limit = Math.min(seconds, a.duration - a.currentTime);
         tick();
       }
       function tick() {
@@ -506,6 +514,7 @@
         timerFill.style.transform = 'scaleX(' + (left / limit) + ')';
         timerText.textContent = Math.ceil(left) + ' s';
         timerFill.classList.toggle('hurry', left < 5);
+        if (refrain) showLines((performance.now() - startedAt - pausedMs) / 1000);
         if (left <= 0) return timeUp();
         raf = setTimeout(tick, 100); // setTimeout plutôt que l'animation : continue aussi dans un onglet en arrière-plan
       }
@@ -518,7 +527,15 @@
         status.textContent = 'Temps écoulé !';
         toHost({ t: 'timeup', id: msg.id });
       }
-      const onEnded = () => { if (msg.listen !== 'flash' && startedAt != null && !S.paused) timeUp(); };
+      let shown = 1;
+      function showLines(t) {
+        const n = Math.min(msg.lines.length, Math.floor(t / msg.lineSeconds) + 1);
+        if (n === shown) return;
+        shown = n;
+        lyricLines.forEach((li, i) => { li.hidden = i >= n; li.classList.toggle('on', i === n - 1); });
+        status.textContent = 'Ligne ' + n + ' / ' + msg.lines.length;
+      }
+      const onEnded = () => { if (!refrain && msg.listen !== 'flash' && startedAt != null && !S.paused) timeUp(); };
       MQ.player.audio.addEventListener('ended', onEnded);
       screenCleanups.push(() => { clearTimeout(raf); MQ.player.audio.removeEventListener('ended', onEnded); });
 
@@ -529,6 +546,12 @@
       }
       function begin() {
         launchBtn.hidden = true;
+        if (refrain) {
+          if (!S.paused && input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
+          if (!S.paused && buttons) buttons.forEach(b => { b.disabled = false; });
+          startTimer();
+          return;
+        }
         playOnce().then(() => {
           if (stopped) return;
           if (S.paused) { MQ.player.pause(); MQ.player._resumeOnPlay = msg.listen !== 'flash'; }
@@ -592,12 +615,13 @@
           if (mine.titleRank) ranks.push((text ? 'titre ' : '') + ord(mine.titleRank));
           parts.push(h('span.part.bonus', 'Rapidité (' + ranks.join(', ') + ') +' + mine.rankBonus));
         }
+        if (mine.lineBonus) parts.push(h('span.part.bonus', 'Dès la ligne ' + mine.line + ' +' + mine.lineBonus));
         if (mine.bonus) parts.push(h('span.part.bonus', 'Série ×' + mine.streak + ' +' + mine.bonus));
       }
 
       // Barre de 5 s, qui s'arrête pendant une pause.
       const barFill = h('div.break-fill');
-      const label = msg.last ? 'Résultats' : 'Musique suivante';
+      const label = msg.last ? 'Résultats' : S.round && S.round.listen === 'refrain' ? 'Refrain suivant' : 'Musique suivante';
       const countdown = h('span.break-text', label + ' dans ' + Math.round(msg.breakMs / 1000) + ' s');
       let elapsed = 0, last = performance.now(), raf;
       S.paused = false;
@@ -717,6 +741,12 @@
     title: 'Flash 1 seconde',
     tagline: 'Une seule seconde des plus grands tubes. Tu la reconnais ?',
     mount: (root, ctx) => mount(root, ctx, { listen: 'flash' })
+  });
+  MQ.registerGame({
+    id: 'refrain',
+    title: 'Refrain',
+    tagline: 'Pas de son : le refrain s’affiche ligne par ligne, titre caché. Trouve la chanson au plus vite.',
+    mount: (root, ctx) => mount(root, ctx, { listen: 'refrain' })
   });
   MQ.registerGame({ id: 'year', title: 'Quelle année ?', tagline: 'Situe la chanson dans le temps, à 2 ans près.', available: false });
 

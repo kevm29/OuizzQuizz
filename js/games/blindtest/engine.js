@@ -30,6 +30,10 @@ window.MQ = window.MQ || {};
   // le 1er à trouver gagne +30 % de ces points, le 2e +20 %, le 3e +10 %.
   // L'ordre se fait sur le temps de chacun, compté depuis le moment où il a entendu la musique.
   const RANK_BONUS = [0.30, 0.20, 0.10];
+  // Jeu « Refrain » : une ligne du refrain de plus toutes les LINE_SECONDS secondes (4 au plus).
+  // Bonus si l'on trouve l'artiste ou le titre en entier dès la 1re, 2e ou 3e ligne.
+  const LINE_SECONDS = 10;
+  const LINE_BONUS = [20, 10, 5, 0];
 
   function pickDistractors(answer, pool, n) {
     const decade = s => Math.floor(s.year / 10);
@@ -49,6 +53,7 @@ window.MQ = window.MQ || {};
 
   MQ.poolFor = function (settings) {
     if (settings.listen === 'flash') return MQ.catalog.filter(s => s.top);
+    if (settings.listen === 'refrain') return MQ.refrainSongs.slice();
     const cat = MQ.categories.find(c => c.id === settings.category) || MQ.categories[0];
     const level = MQ.levels.find(l => l.id === settings.level) || MQ.levels[0];
     return MQ.catalog.filter(s => cat.test(s) && level.test(s));
@@ -143,6 +148,14 @@ window.MQ = window.MQ || {};
     async findTrack() {
       while (this.queue.length) {
         const song = this.queue.shift();
+        if (this.settings.listen === 'refrain') {
+          // Les paroles d'abord ; l'extrait ne sert qu'à la pochette de l'intertitre.
+          // On n'attend pas la pochette plus de 3 s.
+          const cover = Promise.race([MQ.findPreview(song).catch(() => null), new Promise(ok => setTimeout(() => ok(null), 3000))]);
+          const lines = await MQ.findChorus(song);
+          if (lines && lines.length) return { song, preview: (await cover) || {}, lines };
+          continue;
+        }
         const preview = await MQ.findPreview(song);
         if (preview) return { song, preview };
       }
@@ -153,20 +166,26 @@ window.MQ = window.MQ || {};
       this.state = 'loading';
       this.send(null, { t: 'loading' });
       const seq = ++this.roundSeq;
+      const s0 = this.settings;
       const track = await this.prefetch;
       if (seq !== this.roundSeq || this.state !== 'loading') return; // annulé entre-temps
       if (!track) {
         this.state = 'lobby';
-        this.send(null, { t: 'fail', reason: 'Impossible de charger les extraits (iTunes et Deezer ne répondent pas).' });
+        this.send(null, { t: 'fail', reason: s0.listen === 'refrain'
+          ? 'Impossible de trouver les paroles (le site LRCLIB ne répond pas).'
+          : 'Impossible de charger les extraits (iTunes et Deezer ne répondent pas).' });
         return;
       }
       this.index++;
       this.prefetch = this.index < this.total ? this.findTrack() : Promise.resolve(null);
 
       const s = this.settings;
+      const refrain = s.listen === 'refrain';
+      const seconds = refrain ? track.lines.length * LINE_SECONDS : ROUND_SECONDS;
       const msg = {
         t: 'round', id: seq, n: this.index, total: this.total,
-        listen: s.listen, answer: s.answer, seconds: ROUND_SECONDS,
+        listen: s.listen, answer: s.answer, seconds,
+        lines: refrain ? track.lines : null, lineSeconds: LINE_SECONDS,
         previewUrl: track.preview.previewUrl,
         offset: s.listen === 'flash' ? Math.round(4 + Math.random() * 18) : 0,
         flashMs: FLASH_MS
@@ -181,7 +200,7 @@ window.MQ = window.MQ || {};
       this.round = { id: seq, track, options, msg, ps };
       this.state = 'round';
       this.send(null, msg);
-      this.schedule(() => this.finishRound(), ROUND_SECONDS * 1000 + GRACE_MS);
+      this.schedule(() => this.finishRound(), seconds * 1000 + GRACE_MS);
     }
 
     receive(id, msg) {
@@ -203,7 +222,8 @@ window.MQ = window.MQ || {};
       let result;
       st.guesses++;
       // Temps du joueur depuis qu'il entend la musique (pauses déduites), envoyé par son appareil.
-      const at = Math.max(0, Math.min(ROUND_SECONDS * 1000 + GRACE_MS, Number(msg.elapsed) || ROUND_SECONDS * 1000));
+      const max = r.msg.seconds * 1000;
+      const at = Math.max(0, Math.min(max + GRACE_MS, Number(msg.elapsed) || max));
       if (this.settings.answer === 'choice') {
         st.choice = msg.choice;
         const ok = r.options[msg.choice] === song;
@@ -289,11 +309,20 @@ window.MQ = window.MQ || {};
         const good = st.artist === PTS_ARTIST || st.title === PTS_TITLE;
         p.streak = good ? p.streak + 1 : 0;
         const bonus = good ? streakBonus(p.streak) : 0;
-        p.score += base + bonus + rk.bonus;
+        // Refrain : à quelle ligne le joueur a trouvé l'artiste ou le titre en entier.
+        let line = null, lineBonus = 0;
+        if (r.msg.listen === 'refrain' && good) {
+          const times = [];
+          if (st.artist === PTS_ARTIST) times.push(st.artistAt);
+          if (st.title === PTS_TITLE) times.push(st.titleAt);
+          line = Math.min(r.msg.lines.length, Math.floor(Math.min(...times) / (LINE_SECONDS * 1000)) + 1);
+          lineBonus = LINE_BONUS[line - 1] || 0;
+        }
+        p.score += base + bonus + rk.bonus + lineBonus;
         results.push({
           id: p.id, name: p.name, artist: st.artist, title: st.title, choice: st.choice,
           guesses: st.guesses, base, bonus, rankBonus: rk.bonus, artistRank: rk.artistRank || null, titleRank: rk.titleRank || null,
-          pts: base + bonus + rk.bonus, streak: p.streak
+          line, lineBonus, pts: base + bonus + rk.bonus + lineBonus, streak: p.streak
         });
       });
       const { song, preview } = r.track;
@@ -301,6 +330,7 @@ window.MQ = window.MQ || {};
       this.send(null, {
         t: 'reveal', id: r.id, n: this.index, total: this.total, last, breakMs: BREAK_MS,
         song: { title: song.title, artist: song.artist, year: song.year },
+        lines: r.msg.lines ? r.msg.lines.length : 0,
         artwork: preview.artwork, link: preview.link, source: preview.source,
         answerIndex: r.options ? r.options.indexOf(song) : null,
         results, standings: this.standings()
@@ -328,5 +358,5 @@ window.MQ = window.MQ || {};
   }
 
   MQ.BlindtestEngine = Engine;
-  MQ.BLINDTEST_RULES = { RANK_BONUS, PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS };
+  MQ.BLINDTEST_RULES = { RANK_BONUS, PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS, LINE_SECONDS, LINE_BONUS };
 })(window.MQ);

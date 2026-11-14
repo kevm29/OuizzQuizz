@@ -6,6 +6,7 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 
 - **Blind test** : un extrait de 30 s. On écrit l'artiste et/ou le titre (ou on choisit parmi 4 propositions).
 - **Flash 1 seconde** : une seule seconde de musique (réécoutable 2 fois), sur les 10 % de titres les plus connus du catalogue (~570).
+- **Refrain** (test, 100 titres très connus, moitié en français) : pas de son, une ligne du refrain s'affiche, puis une autre toutes les 10 s (4 au plus), le titre caché en astérisques (une par lettre). Artiste et titre comme au blind test, bonus +20 / +10 / +5 si on trouve dès la 1re, 2e ou 3e ligne. Paroles lues à la volée sur [LRCLIB](https://lrclib.net) (rien n'est stocké dans le jeu) ; refrain = strophe marquée [Refrain] ou, à défaut, strophe qui revient le plus. Titres dans `js/data/refrain-songs.js`, détection dans `js/core/lyrics.js`, page de contrôle `refrain-test.html`.
 - *Quelle année ?* : à venir.
 
 ## Règles de la réponse écrite
@@ -66,7 +67,7 @@ js/core/ui.js                  utilitaires d'interface
 js/data/catalog.js             catalogue des musiques + catégories
 js/games/blindtest/engine.js   moteur de partie (tourne chez l'hôte ou en solo)
 js/games/blindtest/view.js     écrans : menu, salon, manche, révélation, fin
-js/app.js                      accueil et navigation (#blindtest, #flash, #rejoindre-CODE)
+js/app.js                      accueil et navigation (#blindtest, #flash, #refrain, #rejoindre-CODE)
 ```
 
 Le moteur et les écrans ne se parlent que par messages (`round`, `answer`, `reveal`…). En solo le moteur tourne dans la page ; en ligne il tourne chez l'hôte et les messages passent par PeerJS. Un nouveau sous-jeu peut reprendre le même découpage.
