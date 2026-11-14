@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>OuizzQuizz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="brand" id="home-link" type="button" aria-label="Retour à l'accueil">
+      <span class="brand-mark" aria-hidden="true"></span>OuizzQuizz
+    </button>
+  </header>
+
+  <main id="app" aria-live="polite"></main>
+
+  <footer class="credits">
+    Extraits de 30 s fournis par l'API publique iTunes (Apple), avec Deezer en secours. Aucun fichier audio n'est hébergé par le jeu. Multijoueur en pair-à-pair via PeerJS.
+  </footer>
+
+  <!-- Scripts classiques (pas de modules ES) : le jeu marche aussi en double-cliquant sur index.html. -->
+  <script src="js/vendor/peerjs.min.js"></script>
+  <script src="js/core/registry.js"></script>
+  <script src="js/core/audio-source.js"></script>
+  <script src="js/core/ui.js"></script>
+  <script src="js/core/match.js"></script>
+  <script src="js/core/net.js"></script>
+  <script src="js/data/catalog.js"></script>
+  <script src="js/games/blindtest/engine.js"></script>
+  <script src="js/games/blindtest/view.js"></script>
+  <!-- Ajouter les futurs sous-jeux ici : js/games/<nom>.js -->
+  <script src="js/app.js"></script>
+</body>
+</html>
