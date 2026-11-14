@@ -11,15 +11,16 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 ## Règles de la réponse écrite
 
 - Une seule barre de saisie : on peut taper l'artiste, le titre, ou les deux d'un coup (« queen bohemian rhapsody »). Essais illimités pendant les 30 s de la manche.
-- Artiste trouvé : 10 pts. Titre trouvé : 10 pts. La moitié des mots importants de l'artiste ou du titre (hors petits mots comme « le », « the », « de »…) : 5 pts, qui passent à 10 si on trouve ensuite le nom complet. Pour « A Featuring B », chaque artiste crédité compte à part.
-- La manche s'arrête quand l'extrait se termine (30 s au plus). En multijoueur, dès qu'un chrono est fini, les autres ont 1,5 s.
+- Artiste trouvé : 20 pts. Titre trouvé : 20 pts. La moitié des mots importants de l'artiste ou du titre (hors petits mots comme « le », « the », « de »…) : 10 pts, qui passent à 20 si on trouve ensuite le nom complet.
+- Bonus de classement (à partir de 2 joueurs) : pour l'artiste et pour le titre, le 1er à trouver gagne +30 % de ces points, le 2e +20 %, le 3e +10 %, les suivants rien. Le temps de chacun est compté depuis le moment où **il** entend la musique sur son appareil, pauses déduites : un léger décalage de chargement ne pénalise personne. Pour « A Featuring B », chaque artiste crédité compte à part.
+- La manche s'arrête quand l'extrait se termine (30 s au plus). Chaque joueur a son propre chrono ; en multijoueur, après le premier « temps écoulé », on attend les autres au plus 4 s.
 - Chaque essai s'affiche en **vert** (bon), **jaune** (à moitié) ou **rouge** (faux). Quand l'artiste et le titre sont trouvés, la saisie se bloque.
-- Bonus de série, pour chaque manche d'affilée où on a trouvé au moins l'artiste ou le titre complet : +10 à la 2e, +10 à la 3e, +10 à la 4e, puis +15 à chaque manche suivante.
-- Entre deux musiques, un écran intertitre de 5 s montre la réponse et les points, puis la musique suivante démarre toute seule.
+- Bonus de série, pour chaque manche d'affilée où on a trouvé au moins l'artiste ou le titre complet : +20 à la 2e, +20 à la 3e, +20 à la 4e, puis +30 à chaque manche suivante.
+- Entre deux musiques, un écran intertitre silencieux de 5 s montre la réponse et les points, puis la musique suivante démarre toute seule.
 - Casse, accents, ponctuation, espaces et « The / Le / La / Les » au début sont ignorés.
 - Fautes tolérées (lettres en trop, en moins ou différentes) : **3** pour les noms de 8 caractères et plus, 2 entre 5 et 7, 1 en dessous de 5. Réglable dans `js/core/match.js`.
 - Ce qui est entre parenthèses ou après « feat. » est facultatif. D'autres réponses acceptées peuvent être ajoutées avec `artistAlt` / `titleAlt` dans le catalogue.
-- Mode 4 propositions : 20 pts pour la bonne réponse, même bonus de série.
+- Mode 4 propositions : 40 pts pour la bonne réponse, mêmes bonus de série et de classement.
 
 Le barème se règle en haut de `js/games/blindtest/engine.js`.
 

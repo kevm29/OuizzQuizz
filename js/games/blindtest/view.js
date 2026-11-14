@@ -11,8 +11,8 @@
     { id: 'flash', label: 'Flash 1 seconde', help: 'Une seule seconde de musique (réécoutable 2 fois), sur les 10 % de titres les plus connus.' }
   ];
   const ANSWER = [
-    { id: 'text', label: 'Écrire la réponse', help: 'Une seule barre, essais illimités, jusqu’à 3 fautes tolérées. Artiste 10 pts, titre 10 pts, moitié du titre 5 pts.' },
-    { id: 'choice', label: '4 propositions', help: 'Choisis le bon titre : 20 pts.' }
+    { id: 'text', label: 'Écrire la réponse', help: 'Une seule barre, essais illimités, jusqu’à 3 fautes tolérées. Artiste 20 pts, titre 20 pts, moitié de l’un ou l’autre 10 pts. À plusieurs : +30 %, +20 %, +10 % pour les 3 premiers à trouver.' },
+    { id: 'choice', label: '4 propositions', help: 'Choisis le bon titre : 40 pts.' }
   ];
 
   function mount(root, ctx, preset) {
@@ -349,7 +349,7 @@
       let answerArea, input, sendBtn, buttons, artistBadge, titleBadge, guessList;
       if (msg.answer === 'choice') {
         buttons = msg.options.map((o, i) => h('button.option', {
-          type: 'button', onclick: () => { if (stopped) return; toHost({ t: 'guess', id: msg.id, choice: i }); lock(); buttons[i].classList.add('picked'); status.textContent = isMulti() ? 'Réponse envoyée. On attend les autres…' : 'Réponse envoyée.'; }
+          type: 'button', onclick: () => { if (stopped) return; toHost({ t: 'guess', id: msg.id, choice: i, elapsed: myElapsed() }); lock(); buttons[i].classList.add('picked'); status.textContent = isMulti() ? 'Réponse envoyée. On attend les autres…' : 'Réponse envoyée.'; }
         }, h('span.key', String(i + 1)), h('span.opt-text', h('strong', o.title), h('span', o.artist))));
         answerArea = h('div.options', buttons);
         onKey(e => {
@@ -368,7 +368,7 @@
         answerArea = h('div.answer-zone',
           h('div.badges', artistBadge, titleBadge),
           h('form.guess-form', { onsubmit: e => { e.preventDefault(); sendGuess(); } }, input, sendBtn),
-          h('p.meta', 'Artiste ' + R.PTS_ARTIST + ' pts · titre ' + R.PTS_TITLE + ' pts · la moitié des mots de l’artiste ou du titre : ' + R.PTS_HALF_TITLE + ' pts. Tu peux essayer autant de fois que tu veux.'),
+          h('p.meta', 'Artiste ' + R.PTS_ARTIST + ' pts · titre ' + R.PTS_TITLE + ' pts · la moitié des mots de l’artiste ou du titre : ' + R.PTS_HALF_TITLE + ' pts. Tu peux essayer autant de fois que tu veux.' + (isMulti() ? ' Les 3 premiers à trouver gagnent +30 %, +20 %, +10 %.' : '')),
           guessList);
       }
 
@@ -388,12 +388,14 @@
           prevSongCard())
       );
       root.append(panel);
-      if (input) input.focus({ preventScroll: true });
+      // On ne peut répondre qu'une fois la musique lancée chez soi (le chrono part de là).
+      if (input) input.disabled = sendBtn.disabled = true;
+      if (buttons) buttons.forEach(b => { b.disabled = true; });
 
       function sendGuess() {
         const text = input.value.trim();
         if (!text || stopped || S.paused) return;
-        toHost({ t: 'guess', id: msg.id, text });
+        toHost({ t: 'guess', id: msg.id, text, elapsed: myElapsed() });
         input.value = '';
         input.focus({ preventScroll: true });
       }
@@ -458,9 +460,11 @@
           replayBtn.disabled = false;
           if (!stopped) {
             if (msg.listen !== 'flash' && startedAt != null) eq.classList.add('on');
-            if (input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
-            if (buttons) buttons.forEach(b => { b.disabled = false; });
-            if (startedAt != null) tick();
+            if (startedAt != null) {
+              if (input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
+              if (buttons) buttons.forEach(b => { b.disabled = false; });
+              tick();
+            }
           }
         }
       };
@@ -480,6 +484,12 @@
         if (input) { input.disabled = sendBtn.disabled = true; }
       }
 
+      // Temps écoulé pour CE joueur, depuis qu'il entend la musique (pauses déduites).
+      function myElapsed() {
+        if (startedAt == null) return seconds * 1000;
+        const pauseNow = pausedAt != null ? performance.now() - pausedAt : 0;
+        return Math.round(performance.now() - startedAt - pausedMs - pauseNow);
+      }
       // Le chrono ne dépasse jamais la fin de l'extrait : quand la musique s'arrête, la manche s'arrête.
       let limit = seconds;
       function startTimer() {
@@ -524,6 +534,10 @@
           if (S.paused) { MQ.player.pause(); MQ.player._resumeOnPlay = msg.listen !== 'flash'; }
           status.textContent = msg.listen === 'flash' ? 'Une seconde… c’est quoi ?' : 'Quel est ce titre ?';
           eq.classList.add('on');
+          if (!S.paused) {
+            if (input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
+            if (buttons) buttons.forEach(b => { b.disabled = false; });
+          }
           if (msg.listen === 'flash') {
             later(() => eq.classList.remove('on'), msg.flashMs);
             replayBtn.hidden = replays <= 0;
@@ -558,8 +572,8 @@
       S.standings = msg.standings;
       S.prev = { song: msg.song, artwork: msg.artwork, results: msg.results, answer: S.round && S.round.answer };
 
-      // En Flash, on fait écouter le titre en entier pendant l'intertitre.
-      if (S.round && S.round.listen === 'flash') MQ.player.play(S.round.previewUrl).catch(() => {});
+      // Intertitre silencieux.
+      MQ.player.fadeOut(300);
 
       const text = S.round && S.round.answer === 'text';
       const tone = !mine ? '.bad' : (mine.artist === R.PTS_ARTIST && mine.title === R.PTS_TITLE) ? '.good' : mine.pts ? '.half' : '.bad';
@@ -570,6 +584,13 @@
           parts.push(h('span.part' + (mine.title === R.PTS_TITLE ? '.ok' : mine.title ? '.mid' : '.ko'), 'Titre ' + (mine.title ? '+' + mine.title : '0')));
         } else {
           parts.push(h('span.part' + (mine.base ? '.ok' : '.ko'), mine.base ? 'Bonne réponse +' + mine.base : 'Mauvaise réponse'));
+        }
+        const ord = n => n === 1 ? '1er' : n + 'e';
+        if (mine.rankBonus) {
+          const ranks = [];
+          if (mine.artistRank) ranks.push((text ? 'artiste ' : '') + ord(mine.artistRank));
+          if (mine.titleRank) ranks.push((text ? 'titre ' : '') + ord(mine.titleRank));
+          parts.push(h('span.part.bonus', 'Rapidité (' + ranks.join(', ') + ') +' + mine.rankBonus));
         }
         if (mine.bonus) parts.push(h('span.part.bonus', 'Série ×' + mine.streak + ' +' + mine.bonus));
       }
@@ -595,7 +616,6 @@
       S.onPause = paused => {
         banner.hidden = !paused;
         if (pauseBtn) pauseBtn.textContent = paused ? 'Reprendre' : 'Pause';
-        if (paused) MQ.player.pause(); else MQ.player.resume();
       };
       screenCleanups.push(() => { S.onPause = null; });
 

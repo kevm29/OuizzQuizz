@@ -13,17 +13,23 @@ window.MQ = window.MQ || {};
   const BREAK_MS = 5000;        // écran intertitre entre deux musiques
   const FLASH_MS = 1000;
   const GRACE_MS = 6000;        // marge pour le chargement de l'extrait chez chacun
-  const LAST_CALL_MS = 1500;    // après le premier « temps écoulé », délai laissé aux autres
+  // Chaque joueur a son propre chrono, lancé quand IL entend la musique.
+  // Après le premier « temps écoulé », on attend les autres au plus ce délai.
+  const LAST_CALL_MS = 4000;
 
   // Barème (réponse écrite)
-  const PTS_ARTIST = 10;
-  const PTS_TITLE = 10;
-  const PTS_HALF_TITLE = 5;
-  const PTS_HALF_ARTIST = 5;
-  const PTS_CHOICE = 20;        // mode 4 propositions : artiste + titre d'un coup
+  const PTS_ARTIST = 20;
+  const PTS_TITLE = 20;
+  const PTS_HALF_TITLE = 10;
+  const PTS_HALF_ARTIST = 10;
+  const PTS_CHOICE = 40;        // mode 4 propositions : artiste + titre d'un coup
   // Bonus de série : manches d'affilée avec au moins l'artiste ou le titre trouvé.
-  // 2e manche : +10, 3e : +10, 4e : +10, puis +15 à chaque manche.
-  const streakBonus = n => n < 2 ? 0 : n < 5 ? 10 : 15;
+  // 2e manche : +20, 3e : +20, 4e : +20, puis +30 à chaque manche.
+  const streakBonus = n => n < 2 ? 0 : n < 5 ? 20 : 30;
+  // Bonus de classement (à partir de 2 joueurs) : pour l'artiste et pour le titre,
+  // le 1er à trouver gagne +30 % de ces points, le 2e +20 %, le 3e +10 %.
+  // L'ordre se fait sur le temps de chacun, compté depuis le moment où il a entendu la musique.
+  const RANK_BONUS = [0.30, 0.20, 0.10];
 
   function pickDistractors(answer, pool, n) {
     const decade = s => Math.floor(s.year / 10);
@@ -48,8 +54,8 @@ window.MQ = window.MQ || {};
     return MQ.catalog.filter(s => cat.test(s) && level.test(s));
   };
 
-  // artist et title : 0, 5 (à moitié) ou 10 (trouvé)
-  const freshState = () => ({ artist: 0, title: 0, choice: null, done: false, timeup: false, guesses: 0 });
+  // artist et title : 0, à moitié ou trouvé (en points) ; artistAt / titleAt : temps du joueur (ms)
+  const freshState = () => ({ artist: 0, title: 0, artistAt: null, titleAt: null, choice: null, done: false, timeup: false, guesses: 0 });
 
   class Engine {
     /** send(toId|null, msg) : null = tout le monde. */
@@ -187,7 +193,7 @@ window.MQ = window.MQ || {};
       if (msg.t === 'timeup') {
         st.timeup = true;
         // Le premier chrono terminé lance un court délai pour les retardataires, au lieu d'attendre la marge entière.
-        if (!r.closing) { r.closing = true; if (!this.paused) this.schedule(() => this.finishRound(), LAST_CALL_MS); }
+        if (!r.closing) { r.closing = true; if (!this.paused && this.timerAt - Date.now() > LAST_CALL_MS) this.schedule(() => this.finishRound(), LAST_CALL_MS); }
         this.checkDone();
         return;
       }
@@ -196,19 +202,24 @@ window.MQ = window.MQ || {};
       const song = r.track.song;
       let result;
       st.guesses++;
+      // Temps du joueur depuis qu'il entend la musique (pauses déduites), envoyé par son appareil.
+      const at = Math.max(0, Math.min(ROUND_SECONDS * 1000 + GRACE_MS, Number(msg.elapsed) || ROUND_SECONDS * 1000));
       if (this.settings.answer === 'choice') {
         st.choice = msg.choice;
         const ok = r.options[msg.choice] === song;
-        if (ok) { st.artist = PTS_ARTIST; st.title = PTS_TITLE; }
+        if (ok) { st.artist = PTS_ARTIST; st.title = PTS_TITLE; st.artistAt = st.titleAt = at; }
         st.done = true;
         result = 'sent'; // on ne dévoile qu'à l'intertitre
       } else {
         const text = String(msg.text || '').slice(0, 120);
         const g = MQ.match.judgeGuess(text, song);
+        const a0 = st.artist, t0 = st.title;
         if (g.artist === 'full') st.artist = PTS_ARTIST;
         else if (g.artist === 'half' && st.artist < PTS_HALF_ARTIST) st.artist = PTS_HALF_ARTIST;
         if (g.title === 'full') st.title = PTS_TITLE;
         else if (g.title === 'half' && st.title < PTS_HALF_TITLE) st.title = PTS_HALF_TITLE;
+        if (st.artist > a0) st.artistAt = at;
+        if (st.title > t0) st.titleAt = at;
         result = (g.artist === 'full' || g.title === 'full') ? 'good' : (g.artist || g.title) ? 'half' : 'bad';
         st.done = st.artist === PTS_ARTIST && st.title === PTS_TITLE;
       }
@@ -250,17 +261,39 @@ window.MQ = window.MQ || {};
       this.state = 'reveal';
       const r = this.round;
       const results = [];
+      // Bonus de classement, élément par élément (artiste, puis titre).
+      const rank = new Map(); // id -> {bonus, artistRank, titleRank}
+      const inRound = Array.from(r.ps.keys()).filter(id => this.players.has(id));
+      if (inRound.length >= 2) {
+        const choice = this.settings.answer === 'choice';
+        (choice ? ['title'] : ['artist', 'title']).forEach(el => {
+          inRound
+            .filter(id => r.ps.get(id)[el] > 0)
+            .sort((a, b) => r.ps.get(a)[el + 'At'] - r.ps.get(b)[el + 'At'])
+            .slice(0, RANK_BONUS.length)
+            .forEach((id, i) => {
+              const st = r.ps.get(id);
+              const pts = choice ? PTS_CHOICE : st[el];
+              const e = rank.get(id) || { bonus: 0 };
+              e.bonus += Math.round(pts * RANK_BONUS[i]);
+              e[el + 'Rank'] = i + 1;
+              rank.set(id, e);
+            });
+        });
+      }
       this.players.forEach(p => {
         const st = r.ps.get(p.id);
         if (!st) return;
+        const rk = rank.get(p.id) || { bonus: 0 };
         const base = this.roundPoints(st);
         const good = st.artist === PTS_ARTIST || st.title === PTS_TITLE;
         p.streak = good ? p.streak + 1 : 0;
         const bonus = good ? streakBonus(p.streak) : 0;
-        p.score += base + bonus;
+        p.score += base + bonus + rk.bonus;
         results.push({
           id: p.id, name: p.name, artist: st.artist, title: st.title, choice: st.choice,
-          guesses: st.guesses, base, bonus, pts: base + bonus, streak: p.streak
+          guesses: st.guesses, base, bonus, rankBonus: rk.bonus, artistRank: rk.artistRank || null, titleRank: rk.titleRank || null,
+          pts: base + bonus + rk.bonus, streak: p.streak
         });
       });
       const { song, preview } = r.track;
@@ -295,5 +328,5 @@ window.MQ = window.MQ || {};
   }
 
   MQ.BlindtestEngine = Engine;
-  MQ.BLINDTEST_RULES = { PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS };
+  MQ.BLINDTEST_RULES = { RANK_BONUS, PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS };
 })(window.MQ);
