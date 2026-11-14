@@ -1,5 +1,5 @@
 /*
- * Catalogue de musiques célèbres.
+ * Classiques choisis à la main (fusionnés avec le grand catalogue plus bas).
  * Seuls le titre, l'artiste et l'année sont stockés : l'extrait est cherché à la volée.
  * fr: true = chanson francophone (catégorie "Chanson française").
  * top: true = parmi les plus célèbres (utilisés par le mode Flash 1 seconde).
@@ -8,7 +8,7 @@
  */
 window.MQ = window.MQ || {};
 
-MQ.catalog = [
+MQ.classics = [
   // 60s / 70s
   { title: 'Hey Jude', artist: 'The Beatles', year: 1968, top: true },
   { title: 'Satisfaction', artist: 'The Rolling Stones', year: 1965 },
@@ -96,11 +96,62 @@ MQ.catalog = [
   { title: 'Tchiki Boum', artist: 'Niagara', year: 1986, fr: true }
 ];
 
+/*
+ * Catalogue final = grand catalogue 1970-2026 (js/data/big-catalog.js)
+ * + les classiques ci-dessus qui n'y sont pas (surtout les années 60 et la chanson française).
+ */
+(function () {
+  const key = s => MQ.match.normalize(s.artist.split(/\s+(?:featuring|feat\.?|ft\.?|with|duet with|x)\s+/i)[0]) + '|' + MQ.match.normalize(s.title.replace(/\s*\(.*?\)\s*/g, ' '));
+
+  const big = (MQ.bigCatalogRows || []).map(r => ({
+    year: r[0], artist: r[1], title: r[2], fame: r[3], score: r[4],
+    source: r[5], frRank: r[6], usPeak: r[7], usWeeks: r[8], fr: !!r[9]
+  }));
+  const seen = new Map(big.map(s => [key(s), s]));
+  const extra = [];
+  MQ.classics.forEach(c => {
+    const twin = seen.get(key(c));
+    if (twin) { // déjà dans le grand catalogue : on garde les réponses alternatives
+      if (c.artistAlt) twin.artistAlt = c.artistAlt;
+      if (c.titleAlt) twin.titleAlt = c.titleAlt;
+      if (c.top) twin.classic = true;
+    } else extra.push(Object.assign({ fame: 5, classic: true, fr: !!c.fr }, c));
+  });
+
+  /*
+   * Célébrité fine, pour le public français : on prend le meilleur entre le rang
+   * au hit-parade français (n°1 = 1) et le succès au Billboard (pic + semaines, pondéré 0,85),
+   * avec un bonus si le titre a marché des deux côtés. Le score 0-100 départage les ex aequo.
+   */
+  MQ.fineFame = function (s) {
+    if (s.frRank == null && s.usPeak == null) return s.classic ? 2 : 0;
+    const fr = s.frRank ? (51 - Math.min(s.frRank, 50)) / 50 : 0;
+    const us = s.usPeak ? 0.5 * Math.pow(1 - (s.usPeak - 1) / 100, 2) + 0.5 * Math.min(s.usWeeks || 0, 40) / 40 : 0;
+    return Math.max(fr, 0.85 * us) + 0.25 * Math.min(fr, us) + (s.score || 0) / 1000 + (s.classic ? 0.2 : 0);
+  };
+
+  MQ.catalog = big.concat(extra);
+  MQ.catalog.forEach(s => { s.fine = MQ.fineFame(s); });
+
+  // Mode Flash 1 seconde : les 10 % les plus connus.
+  const ranked = MQ.catalog.slice().sort((a, b) => b.fine - a.fine);
+  const cut = Math.round(MQ.catalog.length * 0.10);
+  ranked.slice(0, cut).forEach(s => { s.top = true; });
+  ranked.slice(cut).forEach(s => { s.top = false; });
+})();
+
+MQ.levels = [
+  { id: 'hits', label: 'Les grands tubes', test: s => s.fame >= 4 },
+  { id: 'all', label: 'Tout le catalogue', test: () => true }
+];
+
 MQ.categories = [
-  { id: 'all', label: 'Tout mélangé', test: () => true },
+  { id: 'all', label: 'Toutes les années', test: () => true },
   { id: '6070', label: 'Années 60–70', test: s => s.year < 1980 },
   { id: '80', label: 'Années 80', test: s => s.year >= 1980 && s.year < 1990 },
   { id: '90', label: 'Années 90', test: s => s.year >= 1990 && s.year < 2000 },
-  { id: '2000', label: '2000 à aujourd\'hui', test: s => s.year >= 2000 },
+  { id: '2000', label: 'Années 2000', test: s => s.year >= 2000 && s.year < 2010 },
+  { id: '2010', label: 'Années 2010', test: s => s.year >= 2010 && s.year < 2020 },
+  { id: '2020', label: 'Années 2020', test: s => s.year >= 2020 },
   { id: 'fr', label: 'Chanson française', test: s => !!s.fr }
 ];

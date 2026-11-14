@@ -5,7 +5,7 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 ## Sous-jeux
 
 - **Blind test** : un extrait de 30 s. On écrit l'artiste et/ou le titre (ou on choisit parmi 4 propositions).
-- **Flash 1 seconde** : une seule seconde de musique (réécoutable 2 fois), sur les ~40 titres les plus célèbres.
+- **Flash 1 seconde** : une seule seconde de musique (réécoutable 2 fois), sur les 10 % de titres les plus connus du catalogue (~570).
 - *Quelle année ?* : à venir.
 
 ## Règles de la réponse écrite
@@ -77,6 +77,16 @@ MQ.registerGame({
 
 Puis ajouter le `<script>` dans `index.html`, avant `js/app.js`.
 
+## Catalogue
+
+Environ 5 700 titres : 100 par an de 1970 à 2026 (hit-parade français + Billboard Hot 100, fichier `js/data/big-catalog.js`, généré), plus une quinzaine de classiques ajoutés à la main dans `js/data/catalog.js` (années 60, chanson française).
+
+- **Niveau** (blind test normal) : « Les grands tubes » = célébrité 4 ou 5 sur 5 (~2 300 titres), ou « Tout le catalogue ».
+- **Période** : par décennie, ou chanson française.
+- **Flash 1 seconde** : les 10 % les plus connus selon un classement fin pensé pour un public français : meilleur score entre le rang au hit-parade français et le succès au Billboard (pic + semaines, pondéré 0,85), bonus si le titre a marché des deux côtés. Formule dans `MQ.fineFame` (`js/data/catalog.js`).
+
+Un titre sans extrait sur iTunes ni Deezer est sauté automatiquement.
+
 ## Ajouter des musiques
 
-Une ligne dans `js/data/catalog.js` : `{ title: '…', artist: '…', year: 1999 }`. Ajouter `fr: true` pour la chanson française, `top: true` pour l'inclure dans le mode Flash.
+Une ligne dans la liste des classiques de `js/data/catalog.js` : `{ title: '…', artist: '…', year: 1999 }`. Ajouter `fr: true` pour la chanson française.

@@ -46,15 +46,19 @@ window.MQ = window.MQ || {};
     return a && b && (a.includes(b) || b.includes(a));
   }
 
+  const mainArtist = a => a.split(/\s+(?:featuring|feat\.?|ft\.?|with|duet with|x)\s+/i)[0];
+
   function pick(results, song, map) {
     const items = results.map(map).filter(r => r.previewUrl);
-    return items.find(r => artistMatches(r.artist, song.artist) && titleMatches(r.title, song.title))
-        || items.find(r => artistMatches(r.artist, song.artist))
+    const artist = mainArtist(song.artist);
+    const title = song.title.replace(/\s*\(.*?\)\s*/g, ' ').trim() || song.title;
+    return items.find(r => artistMatches(r.artist, artist) && titleMatches(r.title, title))
+        || items.find(r => artistMatches(r.artist, artist))
         || null;
   }
 
   async function fromItunes(song) {
-    const term = encodeURIComponent(song.artist + ' ' + song.title);
+    const term = encodeURIComponent(mainArtist(song.artist) + ' ' + song.title.replace(/\s*\(.*?\)\s*/g, ' '));
     const data = await jsonp('https://itunes.apple.com/search?media=music&entity=song&limit=10&country=FR&term=' + term);
     return pick(data.results || [], song, r => ({
       previewUrl: r.previewUrl,
@@ -67,7 +71,7 @@ window.MQ = window.MQ || {};
   }
 
   async function fromDeezer(song) {
-    const q = encodeURIComponent('artist:"' + song.artist + '" track:"' + song.title + '"');
+    const q = encodeURIComponent('artist:"' + mainArtist(song.artist) + '" track:"' + song.title.replace(/\s*\(.*?\)\s*/g, ' ').trim() + '"');
     const data = await jsonp('https://api.deezer.com/search?output=jsonp&limit=10&q=' + q);
     return pick(data.data || [], song, r => ({
       previewUrl: r.preview,

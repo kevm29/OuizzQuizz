@@ -8,7 +8,7 @@
 
   const LISTEN = [
     { id: 'normal', label: 'Extrait 30 s', help: 'L’extrait tourne pendant que tu cherches.' },
-    { id: 'flash', label: 'Flash 1 seconde', help: 'Une seule seconde de musique (réécoutable 2 fois), sur les titres les plus célèbres.' }
+    { id: 'flash', label: 'Flash 1 seconde', help: 'Une seule seconde de musique (réécoutable 2 fois), sur les 10 % de titres les plus connus.' }
   ];
   const ANSWER = [
     { id: 'text', label: 'Écrire la réponse', help: 'Une seule barre, essais illimités, jusqu’à 3 fautes tolérées. Artiste 10 pts, titre 10 pts, moitié du titre 5 pts.' },
@@ -23,7 +23,8 @@
       screen: null, round: null, history: [], score: 0
     };
     const saved = MQ.store.get('blindtest.settings', {});
-    let settings = Object.assign({ rounds: 10, category: 'all', listen: 'normal', answer: 'text' }, saved, preset || {});
+    let settings = Object.assign({ rounds: 10, category: 'all', level: 'hits', listen: 'normal', answer: 'text' }, saved, preset || {});
+    if (!MQ.categories.some(c => c.id === settings.category)) settings.category = 'all';
     let playerName = MQ.store.get('player.name', '');
 
     /* ---------- outils ---------- */
@@ -87,8 +88,11 @@
         chipGroup('Manches', [5, 10, 15].map(n => ({ id: n, label: n + ' manches' })), settings.rounds, v => set('rounds', v), readOnly),
         settings.listen === 'flash'
           ? null
-          : chipGroup('Catégorie', MQ.categories.map(c => ({ id: c.id, label: c.label })), settings.category, v => set('category', v), readOnly),
-        h('p.meta', listen.help + ' ' + answer.help + ' ' + pool.length + ' titres possibles.')
+          : chipGroup('Niveau', MQ.levels.map(l => ({ id: l.id, label: l.label })), settings.level, v => set('level', v), readOnly),
+        settings.listen === 'flash'
+          ? null
+          : chipGroup('Période', MQ.categories.map(c => ({ id: c.id, label: c.label })), settings.category, v => set('category', v), readOnly),
+        h('p.meta', listen.help + ' ' + answer.help + ' ' + pool.length.toLocaleString('fr-FR') + ' titres possibles.')
       );
     }
 

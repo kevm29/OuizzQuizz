@@ -50,6 +50,8 @@ window.MQ = window.MQ || {};
     const out = new Set([name]);
     out.add(name.replace(/\s*[\(\[].*?[\)\]]\s*/g, ' '));
     out.add(name.replace(/\s+(feat\.?|ft\.?|featuring)\s.*$/i, ''));
+    // « A Featuring B », « A with B », « A x B » : chaque artiste crédité est accepté seul.
+    name.split(/\s+(?:featuring|feat\.?|ft\.?|with|duet with|x)\s+/i).forEach(p => out.add(p));
     const list = [];
     out.forEach(n => { list.push(normalize(n), normalize(n, true)); });
     return Array.from(new Set(list)).filter(Boolean);

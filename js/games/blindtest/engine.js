@@ -24,7 +24,9 @@ window.MQ = window.MQ || {};
   const streakBonus = n => n < 2 ? 0 : n < 5 ? 10 : 15;
 
   function pickDistractors(answer, pool, n) {
-    const others = MQ.shuffle(pool.filter(s => s !== answer));
+    const decade = s => Math.floor(s.year / 10);
+    const shuffled = MQ.shuffle(pool.filter(s => s !== answer));
+    const others = shuffled.filter(s => decade(s) === decade(answer)).concat(shuffled.filter(s => decade(s) !== decade(answer)));
     const chosen = [];
     for (const s of others) {
       if (chosen.length >= n) break;
@@ -40,7 +42,8 @@ window.MQ = window.MQ || {};
   MQ.poolFor = function (settings) {
     if (settings.listen === 'flash') return MQ.catalog.filter(s => s.top);
     const cat = MQ.categories.find(c => c.id === settings.category) || MQ.categories[0];
-    return MQ.catalog.filter(cat.test);
+    const level = MQ.levels.find(l => l.id === settings.level) || MQ.levels[0];
+    return MQ.catalog.filter(s => cat.test(s) && level.test(s));
   };
 
   const freshState = () => ({ artist: false, title: 0, choice: null, done: false, timeup: false, guesses: 0 });
@@ -51,7 +54,7 @@ window.MQ = window.MQ || {};
       this.send = send;
       this.hostId = hostId;
       this.players = new Map(); // id -> {id, name, score, streak}
-      this.settings = { rounds: 10, category: 'all', listen: 'normal', answer: 'text' };
+      this.settings = { rounds: 10, category: 'all', level: 'hits', listen: 'normal', answer: 'text' };
       this.code = null;
       this.state = 'lobby';
       this.roundSeq = 0;
