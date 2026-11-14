@@ -100,9 +100,16 @@ window.MQ = window.MQ || {};
     }
 
     publicPlayers() {
-      return Array.from(this.players.values()).map(p => ({ id: p.id, name: p.name, score: p.score, streak: p.streak }));
+      return Array.from(this.players.values()).map(p => ({
+        id: p.id, name: p.name, score: p.score, streak: p.streak,
+        found: p.found || 0, avgMs: p.found ? Math.round(p.timeSum / p.found) : null
+      }));
     }
-    standings() { return this.publicPlayers().sort((a, b) => b.score - a.score); }
+    // Classement : le score d'abord ; à égalité, le plus rapide en moyenne sur ses bonnes réponses.
+    standings() {
+      const t = p => p.avgMs == null ? Infinity : p.avgMs;
+      return this.publicPlayers().sort((a, b) => b.score - a.score || t(a) - t(b));
+    }
 
     lobby() {
       this.send(null, {
@@ -136,7 +143,7 @@ window.MQ = window.MQ || {};
     start() {
       this.cancelSchedule();
       this.paused = false;
-      this.players.forEach(p => { p.score = 0; p.streak = 0; });
+      this.players.forEach(p => { p.score = 0; p.streak = 0; p.timeSum = 0; p.found = 0; });
       this.pool = MQ.poolFor(this.settings);
       this.queue = MQ.shuffle(this.pool);
       this.total = Math.min(this.settings.rounds, this.pool.length);
@@ -319,6 +326,14 @@ window.MQ = window.MQ || {};
           lineBonus = LINE_BONUS[line - 1] || 0;
         }
         p.score += base + bonus + rk.bonus + lineBonus;
+        // Rapidité, pour départager les égalités : temps de chaque réponse trouvée (artiste, titre, même à moitié).
+        if (this.settings.answer === 'choice') {
+          if (st.title && st.titleAt != null) { p.timeSum = (p.timeSum || 0) + st.titleAt; p.found = (p.found || 0) + 1; }
+        } else {
+          ['artist', 'title'].forEach(el => {
+            if (st[el] && st[el + 'At'] != null) { p.timeSum = (p.timeSum || 0) + st[el + 'At']; p.found = (p.found || 0) + 1; }
+          });
+        }
         results.push({
           id: p.id, name: p.name, artist: st.artist, title: st.title, choice: st.choice,
           guesses: st.guesses, base, bonus, rankBonus: rk.bonus, artistRank: rk.artistRank || null, titleRank: rk.titleRank || null,

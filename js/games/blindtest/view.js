@@ -674,13 +674,19 @@
       ));
     }
 
-    function standingsBlock(standings, title) {
+    function standingsBlock(standings, title, final) {
+      const secs = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+      const tied = (p, i) => standings.some((q, j) => j !== i && q.score === p.score);
+      const anyTie = standings.some(tied);
       return h('div.field',
         h('span.label', title),
-        h('ol.board.standings', standings.map((p, i) => h('li' + (p.id === S.myId ? '.me' : ''),
+        h('ol.board.standings' + (final ? '.final' : ''), standings.map((p, i) => h('li' + (p.id === S.myId ? '.me' : ''),
           h('span.rank', String(i + 1)),
-          h('span.board-name', p.name, ' ', stars(p.streak)),
-          h('span.board-pts', p.score + ' pts')))));
+          h('span.board-name', p.name, ' ', stars(p.streak),
+            final && tied(p, i) ? h('span.tie-tag', 'égalité') : null),
+          final ? h('span.board-speed', { title: 'Temps moyen pour trouver une réponse' }, p.avgMs != null ? '⏱ ' + secs(p.avgMs) : '—') : null,
+          h('span.board-pts', p.score + ' pts')))),
+        final && anyTie ? h('p.meta', 'À égalité de points, le plus rapide passe devant (temps moyen pour trouver l’artiste ou le titre, compté depuis le début de la musique).') : null);
     }
 
     /* ---------- fin ---------- */
@@ -708,7 +714,7 @@
           ? h('p.big-score', rank === 1 ? 'Victoire !' : rank + 'e place')
           : h('p.big-score', me.score, h('small', ' pts')),
         h('p.lede', (isMulti() ? me.score + ' pts · ' : '') + perfect + ' sans faute sur ' + S.history.length + recordLine),
-        isMulti() ? standingsBlock(msg.standings, 'Classement final') : null,
+        isMulti() ? standingsBlock(msg.standings, 'Classement final', true) : null,
         h('div.field',
           h('span.label', 'Tes réponses'),
           h('ol.recap', S.history.map(x => {

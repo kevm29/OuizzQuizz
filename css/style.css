@@ -382,3 +382,6 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 @media (prefers-reduced-motion: reduce) { .lyric.on { animation: none; } }
 .panel.round .lyrics-stage .status { font: 500 12px var(--mono); color: var(--muted); }
 .panel.round .lyrics-stage { padding: 18px 16px; gap: 10px; }
+.board.standings.final li { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.board-speed { font: 500 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tie-tag { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font: 500 11px var(--mono); color: var(--amber); border: 1px solid var(--amber); vertical-align: middle; }

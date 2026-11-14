@@ -21,6 +21,7 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 - Casse, accents, ponctuation, espaces et « The / Le / La / Les » au début sont ignorés.
 - Fautes tolérées (lettres en trop, en moins ou différentes) : **3** pour les noms de 8 caractères et plus, 2 entre 5 et 7, 1 en dessous de 5. Réglable dans `js/core/match.js`.
 - Ce qui est entre parenthèses ou après « feat. » est facultatif. D'autres réponses acceptées peuvent être ajoutées avec `artistAlt` / `titleAlt` dans le catalogue.
+- **Égalité en fin de partie** : le plus rapide passe devant (temps moyen pour trouver l'artiste ou le titre, compté depuis que le joueur entend la musique). Le classement final affiche ce temps (⏱).
 - Mode 4 propositions : 40 pts pour la bonne réponse, mêmes bonus de série et de classement.
 
 Le barème se règle en haut de `js/games/blindtest/engine.js`.
