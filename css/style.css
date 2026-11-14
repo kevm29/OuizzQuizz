@@ -246,3 +246,48 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 .board-pts, .rank { font: 500 14px var(--mono); font-variant-numeric: tabular-nums; }
 .rank { color: var(--amber); width: 1.5em; }
 .reveal > .waiting { grid-column: 1 / -1; }
+
+/* ---------- v3 : saisie unique, couleurs, intertitre ---------- */
+.answer-zone { display: grid; gap: 12px; }
+.badges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.badge { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+.badge-value { font: 800 18px/1.2 var(--display); overflow-wrap: anywhere; color: var(--muted); }
+.badge.ok { border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--surface)); }
+.badge.ok .badge-value { color: var(--good); }
+.badge.half { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--surface)); }
+.badge.half .badge-value { color: var(--amber); }
+
+.guess-form { display: flex; gap: 10px; }
+.guess-input { flex: 1; min-width: 0; font-size: 19px; }
+.guess-input.good { animation: flash-good .8s ease; }
+.guess-input.half { animation: flash-half .8s ease; }
+.guess-input.bad { animation: flash-bad .8s ease; }
+@keyframes flash-good { 0%, 40% { border-color: var(--good); box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 35%, transparent); } }
+@keyframes flash-half { 0%, 40% { border-color: var(--amber); box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 35%, transparent); } }
+@keyframes flash-bad { 0%, 40% { border-color: var(--bad); box-shadow: 0 0 0 4px color-mix(in srgb, var(--bad) 35%, transparent); } }
+
+.guesses { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.guesses li { padding: 6px 12px; border-radius: 999px; font-weight: 600; font-size: 15px; border: 1px solid; overflow-wrap: anywhere; }
+.guesses li.good { color: var(--good); border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.guesses li.half { color: var(--amber); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.guesses li.bad { color: var(--bad); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+.live { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.live li { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; }
+.live li.me { border-color: var(--amber); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--line); vertical-align: middle; }
+.dot.on { background: var(--good); }
+.dot.mid { background: var(--amber); }
+
+.parts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.part { padding: 3px 10px; border-radius: 999px; font: 500 13px var(--mono); border: 1px solid var(--line); }
+.part.ok { color: var(--good); border-color: var(--good); }
+.part.mid { color: var(--amber); border-color: var(--amber); }
+.part.ko { color: var(--bad); border-color: var(--bad); }
+.part.bonus { color: var(--amber-ink); background: var(--amber); border-color: var(--amber); }
+.part-total { font: 800 16px var(--display); margin-left: 4px; }
+
+.break { position: relative; height: 34px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.break-fill { position: absolute; inset: 0; background: color-mix(in srgb, var(--amber) 55%, var(--surface)); transform: scaleX(0); transform-origin: left; transition-property: transform; transition-timing-function: linear; }
+.break-text { position: absolute; inset: 0; display: grid; place-items: center; font: 500 14px var(--mono); color: var(--fg); }
+@media (max-width: 480px) { .badges { grid-template-columns: 1fr; } }

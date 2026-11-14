@@ -114,6 +114,7 @@ window.MQ = window.MQ || {};
       },
       play(url) {
         clearTimeout(this._stopTimer);
+        this._cancelFade();
         audio.pause();
         audio.src = url;
         audio.currentTime = 0;
@@ -123,6 +124,7 @@ window.MQ = window.MQ || {};
       /** Joue `ms` millisecondes à partir de `offset` secondes (mode Flash). */
       playSegment(url, offset, ms) {
         clearTimeout(this._stopTimer);
+        this._cancelFade();
         audio.pause();
         audio.volume = 1;
         return new Promise((resolve, reject) => {
@@ -142,16 +144,19 @@ window.MQ = window.MQ || {};
           } else go();
         });
       },
-      stop() { clearTimeout(this._stopTimer); audio.pause(); },
+      stop() { clearTimeout(this._stopTimer); this._cancelFade(); audio.pause(); audio.volume = 1; },
       fadeOut(ms) {
+        this._cancelFade();
         const start = audio.volume, steps = 10;
         let i = 0;
-        const t = setInterval(() => {
+        this._fade = setInterval(() => {
           i++;
           audio.volume = Math.max(0, start * (1 - i / steps));
-          if (i >= steps) { clearInterval(t); audio.pause(); audio.volume = 1; }
+          if (i >= steps) { this._cancelFade(); audio.pause(); audio.volume = 1; }
         }, (ms || 600) / steps);
-      }
+      },
+      // Un fondu en cours ne doit jamais couper la musique suivante.
+      _cancelFade() { clearInterval(this._fade); this._fade = null; }
     };
   })();
 })(window.MQ);

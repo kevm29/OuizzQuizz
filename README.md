@@ -4,23 +4,29 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 
 ## Sous-jeux
 
-- **Blind test** : un extrait de 30 s. On écrit l'artiste et le titre (ou on choisit parmi 4 propositions).
+- **Blind test** : un extrait de 30 s. On écrit l'artiste et/ou le titre (ou on choisit parmi 4 propositions).
 - **Flash 1 seconde** : une seule seconde de musique (réécoutable 2 fois), sur les ~40 titres les plus célèbres.
 - *Quelle année ?* : à venir.
 
 ## Règles de la réponse écrite
 
-- Titre juste : 100 pts. Artiste juste : 50 pts. Bonus de rapidité jusqu'à 100 pts (moitié du bonus si une seule des deux est juste).
-- +50 pts par manche à partir de 3 sans-faute d'affilée.
+- Une seule barre de saisie : on peut taper l'artiste, le titre, ou les deux d'un coup (« queen bohemian rhapsody »). Essais illimités pendant les 30 s de la manche.
+- Artiste trouvé : 10 pts. Titre trouvé : 10 pts. La moitié des mots importants du titre (hors petits mots comme « le », « the », « de »…) : 5 pts, qui passent à 10 si on trouve ensuite le titre complet.
+- Chaque essai s'affiche en **vert** (bon), **jaune** (titre à moitié) ou **rouge** (faux). Quand l'artiste et le titre sont trouvés, la saisie se bloque.
+- Bonus de série, pour chaque manche d'affilée où on a trouvé au moins l'artiste ou le titre complet : +10 à la 2e, +10 à la 3e, +10 à la 4e, puis +15 à chaque manche suivante.
+- Entre deux musiques, un écran intertitre de 5 s montre la réponse et les points, puis la musique suivante démarre toute seule.
 - Casse, accents, ponctuation, espaces et « The / Le / La / Les » au début sont ignorés.
-- Fautes tolérées (lettres en trop, en moins ou différentes) : **3** pour les noms de 8 caractères et plus, 2 entre 5 et 7, 1 en dessous de 5 (sinon « Abba » accepterait n'importe quel mot de 4 lettres). Réglable dans `js/core/match.js`.
+- Fautes tolérées (lettres en trop, en moins ou différentes) : **3** pour les noms de 8 caractères et plus, 2 entre 5 et 7, 1 en dessous de 5. Réglable dans `js/core/match.js`.
 - Ce qui est entre parenthèses ou après « feat. » est facultatif. D'autres réponses acceptées peuvent être ajoutées avec `artistAlt` / `titleAlt` dans le catalogue.
+- Mode 4 propositions : 20 pts pour la bonne réponse, même bonus de série.
+
+Le barème se règle en haut de `js/games/blindtest/engine.js`.
 
 ## Multijoueur
 
 1. Un joueur clique sur **Créer une partie en ligne** : un code à 4 caractères s'affiche.
 2. Les autres entrent ce code dans **Rejoindre une partie** (ou ouvrent le lien `…#rejoindre-CODE`).
-3. L'hôte choisit les réglages et lance la partie. Chacun entend l'extrait sur son appareil et répond de son côté ; l'hôte corrige et affiche le classement.
+3. L'hôte choisit les réglages et lance la partie. Chacun entend l'extrait sur son appareil et répond de son côté ; on voit en direct qui a trouvé l'artiste ou le titre, et le classement s'affiche à chaque intertitre.
 
 Techniquement : les navigateurs sont reliés en pair-à-pair avec [PeerJS](https://peerjs.com) (WebRTC). Le serveur public gratuit de PeerJS sert seulement à se retrouver avec le code : **aucun compte ni serveur à gérer**. Si l'hôte ferme sa page, la partie s'arrête.
 

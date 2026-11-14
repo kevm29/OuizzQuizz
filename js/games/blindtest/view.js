@@ -11,8 +11,8 @@
     { id: 'flash', label: 'Flash 1 seconde', help: 'Une seule seconde de musique (réécoutable 2 fois), sur les titres les plus célèbres.' }
   ];
   const ANSWER = [
-    { id: 'text', label: 'Écrire artiste + titre', help: 'Jusqu’à 3 fautes tolérées. Titre 100 pts, artiste 50 pts, plus un bonus de rapidité.' },
-    { id: 'choice', label: '4 propositions', help: 'Choisis le bon titre. 100 pts plus un bonus de rapidité.' }
+    { id: 'text', label: 'Écrire la réponse', help: 'Une seule barre, essais illimités, jusqu’à 3 fautes tolérées. Artiste 10 pts, titre 10 pts, moitié du titre 5 pts.' },
+    { id: 'choice', label: '4 propositions', help: 'Choisis le bon titre : 20 pts.' }
   ];
 
   function mount(root, ctx, preset) {
@@ -129,7 +129,7 @@
       root.append(h('section.panel.setup',
         h('p.eyebrow', 'Blind test'),
         title,
-        h('p.lede', 'Un extrait démarre : trouve l’artiste et le titre avant la fin du chrono de 20 secondes. Seul ou à plusieurs en ligne avec un code de partie.'),
+        h('p.lede', 'Un extrait démarre : trouve l’artiste et le titre avant la fin du chrono de 30 secondes. Bonus de série dès 2 manches réussies d’affilée. Seul ou à plusieurs en ligne avec un code de partie.'),
         h('div.field', h('label.label', { htmlFor: 'player-name' }, 'Ton pseudo'), nameInput),
         settingsHost,
         errBox,
@@ -214,11 +214,11 @@
           S.players = msg.players; S.code = msg.code; S.hostId = msg.hostId;
           if (S.role === 'guest') settings = Object.assign({}, settings, msg.settings);
           if (S.role !== 'solo' && msg.state === 'lobby') showLobby();
-          else updateCounts();
           break;
         case 'loading': if (S.screen !== 'round') showWaiting('Chargement de l’extrait…'); break;
         case 'round': showRound(msg); break;
-        case 'progress': S.answered = msg.answered; updateCounts(); break;
+        case 'progress': if (S.onProgress) S.onProgress(msg.players); break;
+        case 'feedback': if (S.onFeedback) S.onFeedback(msg); break;
         case 'reveal': showReveal(msg); break;
         case 'end': showEnd(msg); break;
         case 'fail': showError(msg.reason); break;
@@ -270,19 +270,13 @@
     }
 
     /* ---------- manche ---------- */
-    let countsEl = null;
-    function updateCounts() {
-      if (!countsEl || !isMulti()) return;
-      countsEl.textContent = S.answered.length + ' / ' + S.players.length + ' ont répondu';
-    }
-
     function showRound(msg) {
       clear('round');
-      if (msg.n === 1) { S.history = []; S.score = 0; }
+      if (msg.n === 1) { S.history = []; S.score = 0; S.streak = 0; }
       S.round = msg;
-      S.answered = [];
-      let answered = false, startedAt = null, raf = null, replays = 2;
+      let stopped = false, startedAt = null, raf = null, replays = 2, roundPts = 0;
       const seconds = msg.seconds;
+      const R = MQ.BLINDTEST_RULES;
 
       const timerFill = h('div.timer-fill');
       const timerText = h('span.timer-text', seconds + ' s');
@@ -290,46 +284,98 @@
       const eq = MQ.equalizer(9);
       const launchBtn = h('button.btn.ghost', { type: 'button', hidden: true, onclick: begin }, 'Lancer l’extrait');
       const replayBtn = h('button.btn.ghost#replay-btn', { type: 'button', hidden: true, onclick: replay }, 'Réécouter (2)');
-      countsEl = isMulti() ? h('span.pill', '') : null;
+      const scorePill = h('span.pill.score', S.score + ' pts');
+      const progressBox = isMulti() ? h('ul.live') : null;
 
-      let answerArea, artistInput, titleInput, submitBtn, buttons;
+      let answerArea, input, sendBtn, buttons, artistBadge, titleBadge, guessList;
       if (msg.answer === 'choice') {
         buttons = msg.options.map((o, i) => h('button.option', {
-          type: 'button', onclick: () => submit({ choice: i }, buttons[i])
+          type: 'button', onclick: () => { if (stopped) return; toHost({ t: 'guess', id: msg.id, choice: i }); lock(); buttons[i].classList.add('picked'); status.textContent = isMulti() ? 'Réponse envoyée. On attend les autres…' : 'Réponse envoyée.'; }
         }, h('span.key', String(i + 1)), h('span.opt-text', h('strong', o.title), h('span', o.artist))));
         answerArea = h('div.options', buttons);
         onKey(e => {
           const n = parseInt(e.key, 10);
-          if (!answered && n >= 1 && n <= buttons.length && !(e.target instanceof HTMLInputElement)) buttons[n - 1].click();
+          if (!stopped && n >= 1 && n <= buttons.length) buttons[n - 1].click();
         });
       } else {
-        artistInput = h('input.text-input#ans-artist', {
-          type: 'text', placeholder: 'Artiste', autocomplete: 'off', autocapitalize: 'words', spellcheck: false,
-          onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); titleInput.focus(); } }
+        artistBadge = h('div.badge#artist-badge', h('span.label', 'Artiste'), h('span.badge-value', '?'));
+        titleBadge = h('div.badge#title-badge', h('span.label', 'Titre'), h('span.badge-value', '?'));
+        input = h('input.text-input.guess-input#guess', {
+          type: 'text', placeholder: 'Artiste, titre, ou les deux…', autocomplete: 'off', spellcheck: false,
+          enterKeyHint: 'send', 'aria-label': 'Ta réponse'
         });
-        titleInput = h('input.text-input#ans-title', {
-          type: 'text', placeholder: 'Titre', autocomplete: 'off', spellcheck: false,
-          onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); submitText(); } }
-        });
-        submitBtn = h('button.btn.primary#submit-btn', { type: 'submit' }, 'Valider');
-        answerArea = h('form.answer-form', { onsubmit: e => { e.preventDefault(); submitText(); } },
-          h('label.field', h('span.label', 'Artiste'), artistInput),
-          h('label.field', h('span.label', 'Titre'), titleInput),
-          submitBtn);
+        sendBtn = h('button.btn.primary#send-btn', { type: 'submit' }, 'Valider');
+        guessList = h('ul.guesses', { 'aria-live': 'polite' });
+        answerArea = h('div.answer-zone',
+          h('div.badges', artistBadge, titleBadge),
+          h('form.guess-form', { onsubmit: e => { e.preventDefault(); sendGuess(); } }, input, sendBtn),
+          h('p.meta', 'Artiste ' + R.PTS_ARTIST + ' pts · titre ' + R.PTS_TITLE + ' pts · la moitié des mots du titre ' + R.PTS_HALF_TITLE + ' pts. Tu peux essayer autant de fois que tu veux.'),
+          guessList);
       }
 
       root.append(h('section.panel.round',
         h('div.round-head',
           h('span.pill', 'Manche ' + msg.n + ' / ' + msg.total),
-          h('span.pill.score', S.score + ' pts'),
-          msg.listen === 'flash' ? h('span.pill.streak', 'Flash 1 s') : null,
-          countsEl),
+          scorePill,
+          S.streak >= 1 ? h('span.pill.streak', 'Série ×' + S.streak) : null,
+          msg.listen === 'flash' ? h('span.pill.streak', 'Flash 1 s') : null),
         h('div.stage', eq, status, h('div.stage-actions', launchBtn, replayBtn)),
         h('div.timer', { role: 'progressbar', 'aria-label': 'Temps restant' }, timerFill, timerText),
-        answerArea
+        answerArea,
+        progressBox
       ));
-      updateCounts();
-      if (artistInput) artistInput.focus({ preventScroll: true });
+      if (input) input.focus({ preventScroll: true });
+
+      function sendGuess() {
+        const text = input.value.trim();
+        if (!text || stopped) return;
+        toHost({ t: 'guess', id: msg.id, text });
+        input.value = '';
+        input.focus({ preventScroll: true });
+      }
+
+      const RESULT_CLASS = { good: '.good', half: '.half', bad: '.bad' };
+      S.onFeedback = fb => {
+        if (fb.id !== msg.id) return;
+        if (guessList) {
+          guessList.prepend(h('li' + (RESULT_CLASS[fb.result] || ''), fb.text));
+          input.classList.remove('good', 'half', 'bad');
+          void input.offsetWidth;
+          input.classList.add(fb.result);
+          setBadge(artistBadge, fb.artist ? 'ok' : null, fb.artist);
+          setBadge(titleBadge, fb.title === 'half' ? 'half' : fb.title ? 'ok' : null, fb.title === 'half' ? 'à moitié' : fb.title);
+        }
+        roundPts = fb.pts;
+        scorePill.textContent = (S.score + roundPts) + ' pts';
+        if (fb.done) {
+          lock();
+          status.textContent = msg.answer === 'choice' ? status.textContent : 'Tout trouvé ! Bravo.';
+        }
+      };
+      S.onProgress = list => {
+        if (!progressBox) return;
+        progressBox.replaceChildren(...list.map(p => h('li' + (p.id === S.myId ? '.me' : ''),
+          h('span', p.name),
+          msg.answer === 'choice'
+            ? h('span.dot' + (p.done ? '.on' : ''), { title: 'a répondu' })
+            : [h('span.dot' + (p.artist ? '.on' : ''), { title: 'artiste' }),
+               h('span.dot' + (p.title === R.PTS_TITLE ? '.on' : p.title ? '.mid' : ''), { title: 'titre' })])));
+      };
+      screenCleanups.push(() => { S.onFeedback = S.onProgress = null; });
+      S.onProgress(S.players.map(p => ({ id: p.id, name: p.name })));
+
+      function setBadge(badge, state, text) {
+        badge.classList.remove('ok', 'half');
+        if (state) badge.classList.add(state);
+        badge.querySelector('.badge-value').textContent = text || '?';
+      }
+      function lock() {
+        stopped = true;
+        cancelAnimationFrame(raf);
+        replayBtn.hidden = true;
+        if (buttons) buttons.forEach(b => { b.disabled = true; });
+        if (input) { input.disabled = sendBtn.disabled = true; }
+      }
 
       function startTimer() {
         if (startedAt != null) return;
@@ -337,12 +383,17 @@
         tick();
       }
       function tick() {
-        if (answered) return;
+        if (stopped) return;
         const left = Math.max(0, seconds - (performance.now() - startedAt) / 1000);
         timerFill.style.transform = 'scaleX(' + (left / seconds) + ')';
         timerText.textContent = Math.ceil(left) + ' s';
         timerFill.classList.toggle('hurry', left < 5);
-        if (left <= 0) return timeUp();
+        if (left <= 0) {
+          lock();
+          status.textContent = 'Temps écoulé !';
+          toHost({ t: 'timeup', id: msg.id });
+          return;
+        }
         raf = requestAnimationFrame(tick);
       }
       screenCleanups.push(() => cancelAnimationFrame(raf));
@@ -355,7 +406,7 @@
       function begin() {
         launchBtn.hidden = true;
         playOnce().then(() => {
-          if (answered) return;
+          if (stopped) return;
           status.textContent = msg.listen === 'flash' ? 'Une seconde… c’est quoi ?' : 'Quel est ce titre ?';
           eq.classList.add('on');
           if (msg.listen === 'flash') {
@@ -369,7 +420,7 @@
         });
       }
       function replay() {
-        if (replays <= 0 || answered) return;
+        if (replays <= 0 || stopped) return;
         replays--;
         replayBtn.textContent = 'Réécouter (' + replays + ')';
         replayBtn.hidden = replays <= 0;
@@ -378,93 +429,72 @@
         MQ.player.playSegment(msg.previewUrl, msg.offset, msg.flashMs).catch(() => {});
       }
 
-      function submit(payload, btn) {
-        if (answered) return;
-        answered = true;
-        cancelAnimationFrame(raf);
-        const elapsed = startedAt == null ? seconds * 1000 : performance.now() - startedAt;
-        toHost(Object.assign({ t: 'answer', id: msg.id, elapsed: Math.round(Math.max(1, elapsed)) }, payload));
-        replayBtn.hidden = true;
-        if (buttons) buttons.forEach(b => { b.disabled = true; });
-        if (btn) btn.classList.add('picked');
-        if (artistInput) { artistInput.disabled = titleInput.disabled = submitBtn.disabled = true; }
-        status.textContent = isMulti() ? 'Réponse envoyée. On attend les autres…' : 'Réponse envoyée.';
-      }
-      function submitText() {
-        if (!artistInput.value.trim() && !titleInput.value.trim()) { artistInput.focus(); return; }
-        submit({ artist: artistInput.value, title: titleInput.value });
-      }
-      function timeUp() {
-        if (artistInput) submit({ artist: artistInput.value, title: titleInput.value });
-        else submit({ choice: -1 });
-        status.textContent = 'Temps écoulé !';
-      }
-
       later(begin, 50);
     }
 
-    /* ---------- révélation ---------- */
+    /* ---------- intertitre (réponse + scores, 5 s) ---------- */
     function showReveal(msg) {
       clear('reveal');
-      countsEl = null;
+      const R = MQ.BLINDTEST_RULES;
       const mine = msg.results.find(r => r.id === S.myId);
       const me = msg.standings.find(p => p.id === S.myId);
-      if (me) S.score = me.score;
+      if (me) { S.score = me.score; S.streak = me.streak; }
       if (mine) S.history.push({ song: msg.song, res: mine });
 
-      // En Flash, on fait écouter le titre en entier pendant la révélation.
+      // En Flash, on fait écouter le titre en entier pendant l'intertitre.
       if (S.round && S.round.listen === 'flash') MQ.player.play(S.round.previewUrl).catch(() => {});
 
-      const verdict = !mine ? 'Tu as rejoint en cours de manche'
-        : mine.full ? 'Bravo ! +' + mine.pts + ' pts'
-        : mine.pts ? 'À moitié ! +' + mine.pts + ' pts'
-        : !mine.answered ? 'Temps écoulé' : 'Raté';
-      const tone = mine && mine.full ? '.good' : mine && mine.pts ? '.half' : '.bad';
+      const text = S.round && S.round.answer === 'text';
+      const tone = !mine ? '.bad' : (mine.artist && mine.title === R.PTS_TITLE) ? '.good' : mine.pts ? '.half' : '.bad';
+      const parts = [];
+      if (mine) {
+        if (text) {
+          parts.push(h('span.part' + (mine.artist ? '.ok' : '.ko'), 'Artiste ' + (mine.artist ? '+' + R.PTS_ARTIST : '0')));
+          parts.push(h('span.part' + (mine.title === R.PTS_TITLE ? '.ok' : mine.title ? '.mid' : '.ko'), 'Titre ' + (mine.title ? '+' + mine.title : '0')));
+        } else {
+          parts.push(h('span.part' + (mine.base ? '.ok' : '.ko'), mine.base ? 'Bonne réponse +' + mine.base : 'Mauvaise réponse'));
+        }
+        if (mine.bonus) parts.push(h('span.part.bonus', 'Série ×' + mine.streak + ' +' + mine.bonus));
+      }
 
-      const detail = mine && S.round && S.round.answer === 'text' && mine.answered
-        ? h('ul.my-answer',
-            h('li', h('span.mark' + (mine.artistOk ? '.ok' : '.ko'), mine.artistOk ? '✓' : '✗'), 'Artiste : ', h('em', mine.artist || '—')),
-            h('li', h('span.mark' + (mine.titleOk ? '.ok' : '.ko'), mine.titleOk ? '✓' : '✗'), 'Titre : ', h('em', mine.title || '—')))
-        : null;
-
-      const leader = isLeader();
-      const nextBtn = leader
-        ? h('button.btn.primary.next-btn', { type: 'button', onclick: () => { MQ.player.fadeOut(400); S.engine.next(); } },
-            msg.last ? (isMulti() ? 'Voir le classement' : 'Voir le score') : 'Manche suivante')
-        : h('p.meta.waiting', MQ.equalizer(4), 'L’hôte lance la suite…');
+      const barFill = h('div.break-fill', { style: { transitionDuration: msg.breakMs + 'ms' } });
+      const countdown = h('span.break-text', (msg.last ? 'Résultats' : 'Musique suivante') + ' dans ' + Math.round(msg.breakMs / 1000) + ' s');
+      const t0 = performance.now();
+      const iv = setInterval(() => {
+        const left = Math.max(0, Math.ceil((msg.breakMs - (performance.now() - t0)) / 1000));
+        countdown.textContent = (msg.last ? 'Résultats' : 'Musique suivante') + ' dans ' + left + ' s';
+      }, 250);
+      screenCleanups.push(() => clearInterval(iv));
 
       const roundTable = isMulti()
         ? h('div.field',
             h('span.label', 'Cette manche'),
             h('ol.board', msg.results.slice().sort((a, b) => b.pts - a.pts).map(r => h('li' + (r.id === S.myId ? '.me' : ''),
               h('span.board-name', r.name),
-              h('span.board-answer', !r.answered ? 'pas de réponse'
-                : S.round && S.round.answer === 'text' ? (r.artist || '—') + ' / ' + (r.title || '—')
-                : r.correct ? 'bonne réponse' : 'mauvaise réponse'),
+              h('span.board-answer', text
+                ? [h('span.dot' + (r.artist ? '.on' : '')), ' artiste ', h('span.dot' + (r.title === R.PTS_TITLE ? '.on' : r.title ? '.mid' : '')), ' titre']
+                : r.base ? 'bonne réponse' : 'raté'),
               h('span.board-pts', '+' + r.pts)))))
         : null;
 
-      root.append(h('section.panel.round',
+      root.append(h('section.panel.round.intertitle',
         h('div.round-head',
           h('span.pill', 'Manche ' + msg.n + ' / ' + msg.total),
           h('span.pill.score', S.score + ' pts'),
-          mine && mine.streak >= 2 ? h('span.pill.streak', 'Série ×' + mine.streak) : null),
+          S.streak >= 2 ? h('span.pill.streak', 'Série ×' + S.streak) : null),
         h('div.reveal' + tone,
           msg.artwork ? h('img.cover', { src: msg.artwork, alt: 'Pochette de ' + msg.song.title, width: 120, height: 120 }) : null,
           h('div.reveal-text',
-            h('p.verdict', verdict + (mine && mine.streakBonus ? ' (dont +50 de série)' : '')),
+            h('p.verdict', 'C’était'),
             h('p.reveal-title', msg.song.title),
             h('p.reveal-artist', msg.song.artist + ' · ' + msg.song.year),
-            detail,
-            msg.link ? h('a.source', { href: msg.link, target: '_blank', rel: 'noopener' }, 'Écouter en entier sur ' + msg.source) : null),
-          nextBtn),
+            parts.length ? h('div.parts', parts, h('strong.part-total', '= ' + mine.pts + ' pts')) : null,
+            msg.link ? h('a.source', { href: msg.link, target: '_blank', rel: 'noopener' }, 'Écouter en entier sur ' + msg.source) : null)),
+        h('div.break', { role: 'progressbar', 'aria-label': 'Temps avant la suite' }, barFill, countdown),
         roundTable,
         isMulti() ? standingsBlock(msg.standings, 'Classement') : null
       ));
-      if (leader) {
-        nextBtn.focus({ preventScroll: true });
-        onKey(e => { if (e.key === 'Enter' && document.activeElement === document.body) nextBtn.click(); });
-      }
+      requestAnimationFrame(() => requestAnimationFrame(() => { barFill.style.transform = 'scaleX(1)'; }));
     }
 
     function standingsBlock(standings, title) {
@@ -480,17 +510,18 @@
     function showEnd(msg) {
       clear('end');
       MQ.player.fadeOut(600);
+      const R = MQ.BLINDTEST_RULES;
       const leader = isLeader();
       const me = msg.standings.find(p => p.id === S.myId) || { score: S.score };
       const rank = msg.standings.findIndex(p => p.id === S.myId) + 1;
-      const good = S.history.filter(x => x.res.full).length;
+      const perfect = S.history.filter(x => x.res.artist && x.res.title === R.PTS_TITLE).length;
 
       let recordLine = '';
       if (S.role === 'solo') {
         const s = msg.settings;
         const key = [s.listen, s.answer, s.listen === 'flash' ? 'top' : s.category, s.rounds].join(':');
-        const best = MQ.store.get('blindtest.best2', {});
-        if (!best[key] || me.score > best[key]) { best[key] = me.score; MQ.store.set('blindtest.best2', best); recordLine = ' · nouveau record !'; }
+        const best = MQ.store.get('blindtest.best3', {});
+        if (!best[key] || me.score > best[key]) { best[key] = me.score; MQ.store.set('blindtest.best3', best); recordLine = ' · nouveau record !'; }
         else recordLine = ' · record : ' + best[key] + ' pts';
       }
 
@@ -499,14 +530,17 @@
         isMulti()
           ? h('p.big-score', rank === 1 ? 'Victoire !' : rank + 'e place')
           : h('p.big-score', me.score, h('small', ' pts')),
-        h('p.lede', (isMulti() ? me.score + ' pts · ' : '') + good + ' sans faute sur ' + S.history.length + recordLine),
+        h('p.lede', (isMulti() ? me.score + ' pts · ' : '') + perfect + ' sans faute sur ' + S.history.length + recordLine),
         isMulti() ? standingsBlock(msg.standings, 'Classement final') : null,
         h('div.field',
           h('span.label', 'Tes réponses'),
-          h('ol.recap', S.history.map(x => h('li' + (x.res.full ? '.ok' : x.res.pts ? '.half' : '.ko'),
-            h('span.mark', x.res.full ? '✓' : x.res.pts ? '½' : '✗'),
-            h('span.recap-text', h('strong', x.song.title), ' – ' + x.song.artist),
-            h('span.recap-pts', x.res.pts ? '+' + x.res.pts + (x.res.elapsed != null ? ' · ' + x.res.elapsed.toFixed(1) + ' s' : '') : '0'))))),
+          h('ol.recap', S.history.map(x => {
+            const full = x.res.artist && x.res.title === R.PTS_TITLE;
+            return h('li' + (full ? '.ok' : x.res.pts ? '.half' : '.ko'),
+              h('span.mark', full ? '✓' : x.res.pts ? '½' : '✗'),
+              h('span.recap-text', h('strong', x.song.title), ' – ' + x.song.artist),
+              h('span.recap-pts', '+' + x.res.pts + (x.res.bonus ? ' (série +' + x.res.bonus + ')' : '')));
+          }))),
         h('div.actions',
           leader ? h('button.btn.primary', { type: 'button', onclick: () => { MQ.player.unlock(); S.engine.start(); } }, isMulti() ? 'Rejouer avec les mêmes joueurs' : 'Rejouer') : h('p.meta.waiting', 'L’hôte peut relancer une partie.'),
           S.role === 'host' ? h('button.btn.ghost', { type: 'button', onclick: () => S.engine.backToLobby() }, 'Changer les réglages') : null,
