@@ -370,3 +370,15 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
   .intertitle .reveal { grid-template-columns: auto 1fr; }
   .intertitle .cover { width: 72px; height: 72px; max-width: none; aspect-ratio: auto; }
 }
+
+/* Jeu « Refrain » : lignes du refrain, la dernière apparue en évidence. */
+.lyrics { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; width: 100%; text-align: center; }
+.lyric {
+  font-family: var(--display); font-weight: 800; font-size: clamp(1.15rem, 4.2vw, 1.6rem);
+  line-height: 1.3; color: var(--muted); overflow-wrap: anywhere;
+}
+.lyric.on { color: var(--fg); animation: lyric-in .35s ease-out; }
+@keyframes lyric-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .lyric.on { animation: none; } }
+.panel.round .lyrics-stage .status { font: 500 12px var(--mono); color: var(--muted); }
+.panel.round .lyrics-stage { padding: 18px 16px; gap: 10px; }

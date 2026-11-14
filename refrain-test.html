@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contrôle Refrain</title>
+  <meta name="robots" content="noindex">
+  <style>
+    :root { --bg: #0f1424; --surface: #171e33; --line: #2d3756; --fg: #eef0f7; --muted: #9aa3bf; --good: #3ccf8e; --bad: #ff6b6b; --amber: #ffb547; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    p.meta { color: var(--muted); margin: 0 0 16px; }
+    #summary { font-weight: 600; margin-bottom: 12px; }
+    ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; max-width: 760px; }
+    li { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+    li.ok { border-left-color: var(--good); }
+    li.ko { border-left-color: var(--bad); }
+    li.wait { border-left-color: var(--amber); }
+    .song { font-weight: 600; }
+    .song small { color: var(--muted); font-weight: 400; }
+    .clues { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+    .clues li { all: unset; display: list-item; list-style: decimal; }
+  </style>
+</head>
+<body>
+  <h1>Contrôle du jeu Refrain</h1>
+  <p class="meta">Pour chacun des 100 titres : le refrain détecté sur LRCLIB et les lignes qui seraient affichées, titre masqué. Page de réglage, non liée depuis l'accueil.</p>
+  <div id="summary">Recherche en cours…</div>
+  <ol id="list"></ol>
+  <script src="js/core/lyrics.js"></script>
+  <script src="js/data/refrain-songs.js"></script>
+  <script>
+    (async function () {
+      const list = document.getElementById('list');
+      const summary = document.getElementById('summary');
+      const rows = MQ.refrainSongs.map(song => {
+        const li = document.createElement('li');
+        li.className = 'wait';
+        const head = document.createElement('div');
+        head.className = 'song';
+        head.textContent = song.title + ' – ' + song.artist + ' ';
+        const small = document.createElement('small');
+        small.textContent = (song.fr ? 'FR' : 'INT') + ' · ' + song.year;
+        head.appendChild(small);
+        li.appendChild(head);
+        list.appendChild(li);
+        return { song, li };
+      });
+      let ok = 0, ko = 0, okFr = 0, done = 0;
+      const update = () => { summary.textContent = done + ' / ' + rows.length + ' vérifiés · ' + ok + ' jouables (dont ' + okFr + ' en français) · ' + ko + ' sans refrain trouvé'; };
+      // 4 requêtes à la fois, pour ménager LRCLIB.
+      let next = 0;
+      async function worker() {
+        while (next < rows.length) {
+          const { song, li } = rows[next++];
+          const lines = await MQ.findChorus(song);
+          done++;
+          if (lines && lines.length) {
+            ok++; if (song.fr) okFr++;
+            li.className = 'ok';
+            const ol = document.createElement('ol');
+            ol.className = 'clues';
+            lines.forEach(l => { const x = document.createElement('li'); x.textContent = l; ol.appendChild(x); });
+            li.appendChild(ol);
+          } else {
+            ko++;
+            li.className = 'ko';
+          }
+          update();
+        }
+      }
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      update();
+    })();
+  </script>
+</body>
+</html>
