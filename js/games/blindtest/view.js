@@ -646,8 +646,7 @@
             parts.length ? h('div.parts', parts, h('strong.part-total', '= ' + mine.pts + ' pts')) : null,
             msg.link ? h('a.source', { href: msg.link, target: '_blank', rel: 'noopener' }, 'Écouter en entier sur ' + msg.source) : null)),
         h('div.break', { role: 'progressbar', 'aria-label': 'Temps avant la suite' }, barFill, countdown),
-        roundTable,
-        isMulti() ? standingsBlock(msg.standings, 'Classement') : null
+        isMulti() ? h('div.side', roundTable, standingsBlock(msg.standings, 'Classement')) : null
       ));
     }
 

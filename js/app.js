@@ -28,6 +28,7 @@
     const join = id.match(/^rejoindre-([A-Za-z0-9]{4})$/);
     if (join) { id = 'blindtest'; ctx.joinCode = join[1].toUpperCase(); }
     const game = id && MQ.getGame(id);
+    document.body.classList.toggle('in-game', !!(game && game.available !== false));
     if (game && game.available !== false) {
       root.replaceChildren();
       const cleanup = game.mount(root, ctx);

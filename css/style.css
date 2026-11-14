@@ -291,7 +291,7 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 .break { position: relative; height: 34px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
 .break-fill { position: absolute; inset: 0; background: color-mix(in srgb, var(--amber) 55%, var(--surface)); transform: scaleX(0); transform-origin: left; }
 .break-text { position: absolute; inset: 0; display: grid; place-items: center; font: 500 14px var(--mono); color: var(--fg); }
-@media (max-width: 480px) { .badges { grid-template-columns: 1fr; } }
+
 
 /* ---------- v4 : volume, pause, tableau des scores, musique précédente ---------- */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -329,3 +329,44 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 
 .board-name .initials { min-width: 26px; height: 26px; font-size: 11px; vertical-align: middle; }
 .btn:disabled { opacity: .45; cursor: default; filter: none; }
+
+/* ---------- v5 : tout tient dans l'écran pendant la partie ---------- */
+.in-game .credits { display: none; }
+.in-game .topbar { padding-block: 10px; }
+.in-game main { padding-block: 0 16px; }
+.panel.round { gap: 12px; padding-top: 0; grid-auto-flow: row dense; }
+.panel.round .stage { padding: 14px 16px; gap: 6px; }
+.panel.round .eq { height: 40px; }
+.panel.round .status { font-size: 19px; }
+.panel.round .timer { height: 24px; }
+.panel.round .badge { padding: 8px 12px; gap: 2px; }
+.panel.round .badge-value { font-size: 16px; }
+.panel.round .answer-zone { gap: 8px; }
+.panel.round .answer-zone > .meta { font-size: 13px; }
+.panel.round .field { gap: 6px; }
+.panel.round .scoreboard li { padding: 5px 10px; }
+.panel.round .initials { min-width: 26px; height: 26px; font-size: 11px; }
+.panel.round .prev-cover { width: 48px; height: 48px; }
+.intertitle .cover { width: 96px; height: 96px; }
+.intertitle .reveal { padding: 14px; gap: 14px; }
+.intertitle .reveal-title { font-size: 22px; }
+.intertitle .board li { padding: 6px 4px; }
+@media (min-width: 900px) {
+  .in-game .topbar, .in-game main { max-width: 1100px; }
+  .panel.round { grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr); column-gap: 24px; align-items: start; }
+  .panel.round > * { grid-column: 1; }
+  .panel.round > .side { grid-column: 2; grid-row: 1 / span 8; }
+}
+@media (max-height: 760px) {
+  .panel.round .eq { height: 28px; }
+  .panel.round .stage { padding: 10px 14px; }
+  .in-game .topbar { padding-block: 6px; }
+}
+
+.pause-btn { padding: 8px 18px; }
+@media (max-width: 600px) {
+  .panel.round .answer-zone > .meta { display: none; }
+  .panel.round .badge .label { font-size: 10px; }
+  .intertitle .reveal { grid-template-columns: auto 1fr; }
+  .intertitle .cover { width: 72px; height: 72px; max-width: none; aspect-ratio: auto; }
+}
