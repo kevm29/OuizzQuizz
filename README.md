@@ -39,7 +39,11 @@ Le barème se règle en haut de `js/games/blindtest/engine.js`.
 2. Les autres entrent ce code dans **Rejoindre une partie** (ou ouvrent le lien `…#rejoindre-CODE`).
 3. L'hôte choisit les réglages et lance la partie. Chacun entend l'extrait sur son appareil et répond de son côté ; on voit en direct qui a trouvé l'artiste ou le titre, et le classement s'affiche à chaque intertitre.
 
-Techniquement : les navigateurs sont reliés en pair-à-pair avec [PeerJS](https://peerjs.com) (WebRTC). Le serveur public gratuit de PeerJS sert seulement à se retrouver avec le code : **aucun compte ni serveur à gérer**. Si l'hôte ferme sa page, la partie s'arrête.
+Techniquement, **aucun compte ni serveur à gérer**. Deux chemins sont essayés en même temps, et le premier qui trouve la partie est gardé :
+- **Direct** avec [PeerJS](https://peerjs.com) (WebRTC) : les navigateurs se parlent directement. Certains réseaux le bloquent (4G, box, Wi-Fi d'entreprise).
+- **Relais** par MQTT sur WebSocket, via des serveurs publics gratuits (EMQX, HiveMQ, Mosquitto, en secours les uns des autres) : marche sur tout réseau qui ouvre un site web.
+
+Si l'hôte ferme sa page, la partie s'arrête. La console du navigateur affiche le chemin utilisé (`[OuizzQuizz réseau]`).
 
 ## Mise en ligne sur GitHub Pages
 
@@ -59,6 +63,7 @@ Des extraits officiels de 30 s de l'**API iTunes Search** (Apple), avec **Deezer
 index.html                     page unique, charge les scripts
 css/style.css                  thème visuel
 js/vendor/peerjs.min.js        PeerJS 1.5.4 (licence MIT, voir peerjs.LICENSE)
+js/vendor/mqtt.min.js          MQTT.js 5.10.4 (licence MIT, voir mqtt.LICENSE)
 js/core/registry.js            registre des sous-jeux (MQ.registerGame)
 js/core/audio-source.js        recherche d'extraits (iTunes puis Deezer) + lecteur audio
 js/core/match.js               correction des réponses écrites (Levenshtein)
