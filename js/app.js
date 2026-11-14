@@ -42,5 +42,24 @@
     if (location.hash) location.hash = ''; else route();
   });
   window.addEventListener('hashchange', route);
+
+  // Volume personnel (propre à chaque joueur, gardé dans son navigateur).
+  const vol = document.getElementById('volume');
+  const muteBtn = document.getElementById('mute-btn');
+  let beforeMute = MQ.player.volume || 0.8;
+  function showVolume() {
+    const v = MQ.player.volume;
+    vol.value = Math.round(v * 100);
+    vol.style.setProperty('--pct', (v * 100) + '%');
+    muteBtn.classList.toggle('muted', v === 0);
+    muteBtn.setAttribute('aria-label', v === 0 ? 'Remettre le son' : 'Couper le son');
+  }
+  vol.addEventListener('input', () => { MQ.player.setVolume(vol.value / 100); showVolume(); });
+  muteBtn.addEventListener('click', () => {
+    if (MQ.player.volume > 0) { beforeMute = MQ.player.volume; MQ.player.setVolume(0); }
+    else MQ.player.setVolume(beforeMute || 0.8);
+    showVolume();
+  });
+  showVolume();
   route();
 })(window.MQ);

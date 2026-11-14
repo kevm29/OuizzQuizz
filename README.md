@@ -22,6 +22,14 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 
 Le barème se règle en haut de `js/games/blindtest/engine.js`.
 
+## Pendant la partie
+
+- **Tableau des scores** toujours visible : total de chaque joueur (mis à jour en direct), pastille d'initiales, et ce qu'il a trouvé sur la manche en cours (deux points : artiste, titre).
+- **Étoiles de série** : ★ au bonus de 2 manches réussies d'affilée, ★★ à 3, etc. (au-delà de 5 : ★×n).
+- **Musique précédente** : pochette, titre, artiste, et les initiales de ceux qui l'ont trouvée (vert : tout trouvé, jaune : en partie).
+- **Volume** : curseur en haut à droite, propre à chaque joueur et gardé dans son navigateur.
+- **Pause** : l'hôte (ou le joueur en solo) peut mettre en pause pendant une manche ou un intertitre ; la musique et le chrono s'arrêtent chez tout le monde.
+
 ## Multijoueur
 
 1. Un joueur clique sur **Créer une partie en ligne** : un code à 4 caractères s'affiche.

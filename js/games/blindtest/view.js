@@ -43,6 +43,54 @@
     const isLeader = () => S.role === 'host' || S.role === 'solo';
     const nameOf = id => (S.players.find(p => p.id === id) || {}).name || '?';
 
+    function initials(name) {
+      const parts = String(name || '?').trim().split(/[\s\-_.]+/).filter(Boolean);
+      const txt = parts.length > 1 ? parts[0][0] + parts[1][0] : (parts[0] || '?').slice(0, 2);
+      return txt.toUpperCase();
+    }
+    // 1 étoile au bonus de 2 manches d'affilée, 2 étoiles à 3, etc.
+    function stars(streak) {
+      const n = streak >= 2 ? streak - 1 : 0;
+      if (!n) return null;
+      return h('span.stars', { title: 'Série de ' + streak + ' manches', 'aria-label': n + ' étoile' + (n > 1 ? 's' : '') },
+        n <= 5 ? '★'.repeat(n) : '★×' + n);
+    }
+    function pauseButton() {
+      if (!isLeader()) return null;
+      const btn = h('button.btn.ghost.pause-btn#pause-btn', { type: 'button', onclick: () => {
+        if (S.paused) S.engine.resume(); else S.engine.pause();
+      } }, S.paused ? 'Reprendre' : 'Pause');
+      return btn;
+    }
+    function pausedBanner() {
+      return h('div.paused-banner', { hidden: !S.paused },
+        h('p', 'Pause'),
+        h('span.meta', isLeader() ? 'La partie est en pause.' : 'L’hôte a mis la partie en pause.'),
+        isLeader() ? h('button.btn.primary', { type: 'button', onclick: () => S.engine.resume() }, 'Reprendre') : null);
+    }
+    // Carte « musique précédente » : pochette, titre, artiste et initiales de ceux qui ont trouvé.
+    function prevSongCard() {
+      const p = S.prev;
+      if (!p) return null;
+      const R = MQ.BLINDTEST_RULES;
+      const finders = p.results.filter(r => r.base > 0);
+      return h('div.field',
+        h('span.label', 'Musique précédente'),
+        h('div.prev-song',
+          p.artwork ? h('img.prev-cover', { src: p.artwork, alt: '', width: 56, height: 56 }) : h('div.prev-cover'),
+          h('div.prev-text',
+            h('strong', p.song.title),
+            h('span.meta-line', p.song.artist + ' · ' + p.song.year),
+            h('div.prev-finders', finders.length
+              ? finders.map(r => {
+                  const full = p.answer === 'choice' ? true : r.artist && r.title === R.PTS_TITLE;
+                  return h('span.initials' + (full ? '.full' : '.part'), {
+                    title: r.name + (full ? ' : tout trouvé' : ' : trouvé en partie')
+                  }, initials(r.name));
+                })
+              : h('span.none', 'Personne n’a trouvé')))));
+    }
+
     function saveSettings() { MQ.store.set('blindtest.settings', settings); }
 
     function endSession() {
@@ -223,6 +271,10 @@
         case 'round': showRound(msg); break;
         case 'progress': if (S.onProgress) S.onProgress(msg.players); break;
         case 'feedback': if (S.onFeedback) S.onFeedback(msg); break;
+        case 'pause':
+          S.paused = msg.paused;
+          if (S.onPause) S.onPause(msg.paused);
+          break;
         case 'reveal': showReveal(msg); break;
         case 'end': showEnd(msg); break;
         case 'fail': showError(msg.reason); break;
@@ -276,9 +328,10 @@
     /* ---------- manche ---------- */
     function showRound(msg) {
       clear('round');
-      if (msg.n === 1) { S.history = []; S.score = 0; S.streak = 0; }
+      if (msg.n === 1) { S.history = []; S.score = 0; S.streak = 0; S.prev = null; S.standings = null; }
       S.round = msg;
-      let stopped = false, startedAt = null, raf = null, replays = 2, roundPts = 0;
+      S.paused = false;
+      let stopped = false, startedAt = null, raf = null, replays = 2, roundPts = 0, pausedAt = null, pausedMs = 0;
       const seconds = msg.seconds;
       const R = MQ.BLINDTEST_RULES;
 
@@ -289,7 +342,9 @@
       const launchBtn = h('button.btn.ghost', { type: 'button', hidden: true, onclick: begin }, 'Lancer l’extrait');
       const replayBtn = h('button.btn.ghost#replay-btn', { type: 'button', hidden: true, onclick: replay }, 'Réécouter (2)');
       const scorePill = h('span.pill.score', S.score + ' pts');
-      const progressBox = isMulti() ? h('ul.live') : null;
+      const board = h('ul.scoreboard', { 'aria-label': 'Scores' });
+      const banner = pausedBanner();
+      const pauseBtn = pauseButton();
 
       let answerArea, input, sendBtn, buttons, artistBadge, titleBadge, guessList;
       if (msg.answer === 'choice') {
@@ -317,22 +372,27 @@
           guessList);
       }
 
-      root.append(h('section.panel.round',
+      const panel = h('section.panel.round',
         h('div.round-head',
           h('span.pill', 'Manche ' + msg.n + ' / ' + msg.total),
           scorePill,
-          S.streak >= 1 ? h('span.pill.streak', 'Série ×' + S.streak) : null,
-          msg.listen === 'flash' ? h('span.pill.streak', 'Flash 1 s') : null),
+          stars(S.streak),
+          msg.listen === 'flash' ? h('span.pill.streak', 'Flash 1 s') : null,
+          pauseBtn),
+        banner,
         h('div.stage', eq, status, h('div.stage-actions', launchBtn, replayBtn)),
         h('div.timer', { role: 'progressbar', 'aria-label': 'Temps restant' }, timerFill, timerText),
         answerArea,
-        progressBox
-      ));
+        h('div.side',
+          h('div.field', h('span.label', 'Scores'), board),
+          prevSongCard())
+      );
+      root.append(panel);
       if (input) input.focus({ preventScroll: true });
 
       function sendGuess() {
         const text = input.value.trim();
-        if (!text || stopped) return;
+        if (!text || stopped || S.paused) return;
         toHost({ t: 'guess', id: msg.id, text });
         input.value = '';
         input.focus({ preventScroll: true });
@@ -351,22 +411,61 @@
         }
         roundPts = fb.pts;
         scorePill.textContent = (S.score + roundPts) + ' pts';
+        renderBoard();
         if (fb.done) {
           lock();
           status.textContent = msg.answer === 'choice' ? status.textContent : 'Tout trouvé ! Bravo.';
         }
       };
-      S.onProgress = list => {
-        if (!progressBox) return;
-        progressBox.replaceChildren(...list.map(p => h('li' + (p.id === S.myId ? '.me' : ''),
-          h('span', p.name),
-          msg.answer === 'choice'
+      // Tableau des scores : total (scores précédents + points de la manche en cours), étoiles de série.
+      let live = S.players.map(p => ({ id: p.id, name: p.name }));
+      function renderBoard() {
+        const before = new Map((S.standings || []).map(p => [p.id, p]));
+        const rows = live.map(p => {
+          const prev = before.get(p.id) || { score: 0, streak: 0 };
+          let now = 0;
+          if (msg.answer === 'text') now = (p.artist ? R.PTS_ARTIST : 0) + (p.title === R.PTS_TITLE ? R.PTS_TITLE : p.title ? R.PTS_HALF_TITLE : 0);
+          if (p.id === S.myId) now = roundPts;
+          return { p, total: prev.score + now, streak: prev.streak };
+        }).sort((a, b) => b.total - a.total);
+        board.replaceChildren(...rows.map(({ p, total, streak }) => h('li' + (p.id === S.myId ? '.me' : ''),
+          h('span.initials', { title: p.name }, initials(p.name)),
+          h('span.sb-name', p.name),
+          stars(streak) || h('span'),
+          h('span.sb-dots', msg.answer === 'choice'
             ? h('span.dot' + (p.done ? '.on' : ''), { title: 'a répondu' })
             : [h('span.dot' + (p.artist ? '.on' : ''), { title: 'artiste' }),
-               h('span.dot' + (p.title === R.PTS_TITLE ? '.on' : p.title ? '.mid' : ''), { title: 'titre' })])));
+               h('span.dot' + (p.title === R.PTS_TITLE ? '.on' : p.title ? '.mid' : ''), { title: 'titre' })]),
+          h('span.sb-score', total + ' pts'))));
+      }
+      S.onProgress = list => { live = list; renderBoard(); };
+      S.onPause = paused => {
+        banner.hidden = !paused;
+        if (pauseBtn) pauseBtn.textContent = paused ? 'Reprendre' : 'Pause';
+        panel.classList.toggle('is-paused', paused);
+        if (paused) {
+          pausedAt = performance.now();
+          cancelAnimationFrame(raf);
+          MQ.player.pause();
+          eq.classList.remove('on');
+          if (input) input.disabled = sendBtn.disabled = true;
+          if (buttons) buttons.forEach(b => { b.disabled = true; });
+          replayBtn.disabled = true;
+        } else {
+          if (pausedAt != null) pausedMs += performance.now() - pausedAt;
+          pausedAt = null;
+          MQ.player.resume();
+          replayBtn.disabled = false;
+          if (!stopped) {
+            if (msg.listen !== 'flash' && startedAt != null) eq.classList.add('on');
+            if (input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
+            if (buttons) buttons.forEach(b => { b.disabled = false; });
+            if (startedAt != null) tick();
+          }
+        }
       };
-      screenCleanups.push(() => { S.onFeedback = S.onProgress = null; });
-      S.onProgress(S.players.map(p => ({ id: p.id, name: p.name })));
+      screenCleanups.push(() => { S.onFeedback = S.onProgress = S.onPause = null; });
+      renderBoard();
 
       function setBadge(badge, state, text) {
         badge.classList.remove('ok', 'half');
@@ -387,8 +486,8 @@
         tick();
       }
       function tick() {
-        if (stopped) return;
-        const left = Math.max(0, seconds - (performance.now() - startedAt) / 1000);
+        if (stopped || S.paused) return;
+        const left = Math.max(0, seconds - (performance.now() - startedAt - pausedMs) / 1000);
         timerFill.style.transform = 'scaleX(' + (left / seconds) + ')';
         timerText.textContent = Math.ceil(left) + ' s';
         timerFill.classList.toggle('hurry', left < 5);
@@ -411,6 +510,7 @@
         launchBtn.hidden = true;
         playOnce().then(() => {
           if (stopped) return;
+          if (S.paused) { MQ.player.pause(); MQ.player._resumeOnPlay = msg.listen !== 'flash'; }
           status.textContent = msg.listen === 'flash' ? 'Une seconde… c’est quoi ?' : 'Quel est ce titre ?';
           eq.classList.add('on');
           if (msg.listen === 'flash') {
@@ -424,7 +524,7 @@
         });
       }
       function replay() {
-        if (replays <= 0 || stopped) return;
+        if (replays <= 0 || stopped || S.paused) return;
         replays--;
         replayBtn.textContent = 'Réécouter (' + replays + ')';
         replayBtn.hidden = replays <= 0;
@@ -444,6 +544,8 @@
       const me = msg.standings.find(p => p.id === S.myId);
       if (me) { S.score = me.score; S.streak = me.streak; }
       if (mine) S.history.push({ song: msg.song, res: mine });
+      S.standings = msg.standings;
+      S.prev = { song: msg.song, artwork: msg.artwork, results: msg.results, answer: S.round && S.round.answer };
 
       // En Flash, on fait écouter le titre en entier pendant l'intertitre.
       if (S.round && S.round.listen === 'flash') MQ.player.play(S.round.previewUrl).catch(() => {});
@@ -461,20 +563,36 @@
         if (mine.bonus) parts.push(h('span.part.bonus', 'Série ×' + mine.streak + ' +' + mine.bonus));
       }
 
-      const barFill = h('div.break-fill', { style: { transitionDuration: msg.breakMs + 'ms' } });
-      const countdown = h('span.break-text', (msg.last ? 'Résultats' : 'Musique suivante') + ' dans ' + Math.round(msg.breakMs / 1000) + ' s');
-      const t0 = performance.now();
-      const iv = setInterval(() => {
-        const left = Math.max(0, Math.ceil((msg.breakMs - (performance.now() - t0)) / 1000));
-        countdown.textContent = (msg.last ? 'Résultats' : 'Musique suivante') + ' dans ' + left + ' s';
-      }, 250);
-      screenCleanups.push(() => clearInterval(iv));
+      // Barre de 5 s, qui s'arrête pendant une pause.
+      const barFill = h('div.break-fill');
+      const label = msg.last ? 'Résultats' : 'Musique suivante';
+      const countdown = h('span.break-text', label + ' dans ' + Math.round(msg.breakMs / 1000) + ' s');
+      let elapsed = 0, last = performance.now(), raf;
+      S.paused = false;
+      (function frame(now) {
+        now = now || performance.now();
+        if (!S.paused) elapsed += now - last;
+        last = now;
+        const ratio = Math.min(1, elapsed / msg.breakMs);
+        barFill.style.transform = 'scaleX(' + ratio + ')';
+        countdown.textContent = S.paused ? 'En pause' : label + ' dans ' + Math.max(0, Math.ceil((msg.breakMs - elapsed) / 1000)) + ' s';
+        raf = requestAnimationFrame(frame);
+      })();
+      screenCleanups.push(() => cancelAnimationFrame(raf));
+      const banner = pausedBanner();
+      const pauseBtn = pauseButton();
+      S.onPause = paused => {
+        banner.hidden = !paused;
+        if (pauseBtn) pauseBtn.textContent = paused ? 'Reprendre' : 'Pause';
+        if (paused) MQ.player.pause(); else MQ.player.resume();
+      };
+      screenCleanups.push(() => { S.onPause = null; });
 
       const roundTable = isMulti()
         ? h('div.field',
             h('span.label', 'Cette manche'),
             h('ol.board', msg.results.slice().sort((a, b) => b.pts - a.pts).map(r => h('li' + (r.id === S.myId ? '.me' : ''),
-              h('span.board-name', r.name),
+              h('span.board-name', h('span.initials' + (r.base ? (text && !(r.artist && r.title === R.PTS_TITLE) ? '.part' : '.full') : ''), initials(r.name)), ' ', r.name),
               h('span.board-answer', text
                 ? [h('span.dot' + (r.artist ? '.on' : '')), ' artiste ', h('span.dot' + (r.title === R.PTS_TITLE ? '.on' : r.title ? '.mid' : '')), ' titre']
                 : r.base ? 'bonne réponse' : 'raté'),
@@ -485,7 +603,9 @@
         h('div.round-head',
           h('span.pill', 'Manche ' + msg.n + ' / ' + msg.total),
           h('span.pill.score', S.score + ' pts'),
-          S.streak >= 2 ? h('span.pill.streak', 'Série ×' + S.streak) : null),
+          stars(S.streak),
+          pauseBtn),
+        banner,
         h('div.reveal' + tone,
           msg.artwork ? h('img.cover', { src: msg.artwork, alt: 'Pochette de ' + msg.song.title, width: 120, height: 120 }) : null,
           h('div.reveal-text',
@@ -498,7 +618,6 @@
         roundTable,
         isMulti() ? standingsBlock(msg.standings, 'Classement') : null
       ));
-      requestAnimationFrame(() => requestAnimationFrame(() => { barFill.style.transform = 'scaleX(1)'; }));
     }
 
     function standingsBlock(standings, title) {
@@ -506,7 +625,7 @@
         h('span.label', title),
         h('ol.board.standings', standings.map((p, i) => h('li' + (p.id === S.myId ? '.me' : ''),
           h('span.rank', String(i + 1)),
-          h('span.board-name', p.name),
+          h('span.board-name', p.name, ' ', stars(p.streak)),
           h('span.board-pts', p.score + ' pts')))));
     }
 

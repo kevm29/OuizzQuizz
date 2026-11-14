@@ -103,11 +103,22 @@ window.MQ = window.MQ || {};
   };
 
   // Un seul élément <audio> partagé : débloqué au premier clic, réutilisé ensuite (iOS/Safari).
+  // Le volume choisi par le joueur (0 à 1) est gardé dans le navigateur.
   MQ.player = (function () {
     const audio = new Audio();
     audio.preload = 'auto';
+    let level = 0.8;
+    try { const v = parseFloat(localStorage.getItem('mq.volume')); if (v >= 0 && v <= 1) level = v; } catch (e) {}
+    audio.volume = level;
+
     return {
       audio,
+      get volume() { return level; },
+      setVolume(v) {
+        level = Math.max(0, Math.min(1, v));
+        if (!this._fade) audio.volume = level;
+        try { localStorage.setItem('mq.volume', String(level)); } catch (e) {}
+      },
       unlock() {
         // Lecture silencieuse immédiate pendant le geste utilisateur.
         audio.muted = true;
@@ -117,20 +128,14 @@ window.MQ = window.MQ || {};
         audio.muted = false;
       },
       play(url) {
-        clearTimeout(this._stopTimer);
-        this._cancelFade();
-        audio.pause();
+        this._reset();
         audio.src = url;
         audio.currentTime = 0;
-        audio.volume = 1;
         return audio.play();
       },
       /** Joue `ms` millisecondes à partir de `offset` secondes (mode Flash). */
       playSegment(url, offset, ms) {
-        clearTimeout(this._stopTimer);
-        this._cancelFade();
-        audio.pause();
-        audio.volume = 1;
+        this._reset();
         return new Promise((resolve, reject) => {
           const go = () => {
             try { audio.currentTime = offset; } catch (e) {}
@@ -148,7 +153,17 @@ window.MQ = window.MQ || {};
           } else go();
         });
       },
-      stop() { clearTimeout(this._stopTimer); this._cancelFade(); audio.pause(); audio.volume = 1; },
+      /** Pause de partie : on retient si la musique tournait pour la relancer ensuite. */
+      pause() {
+        this._resumeOnPlay = !audio.paused && !this._stopTimer;
+        clearTimeout(this._stopTimer); this._stopTimer = null;
+        audio.pause();
+      },
+      resume() {
+        if (this._resumeOnPlay) audio.play().catch(() => {});
+        this._resumeOnPlay = false;
+      },
+      stop() { this._reset(); },
       fadeOut(ms) {
         this._cancelFade();
         const start = audio.volume, steps = 10;
@@ -156,11 +171,17 @@ window.MQ = window.MQ || {};
         this._fade = setInterval(() => {
           i++;
           audio.volume = Math.max(0, start * (1 - i / steps));
-          if (i >= steps) { this._cancelFade(); audio.pause(); audio.volume = 1; }
+          if (i >= steps) { this._cancelFade(); audio.pause(); }
         }, (ms || 600) / steps);
       },
+      _reset() {
+        clearTimeout(this._stopTimer); this._stopTimer = null;
+        this._cancelFade();
+        this._resumeOnPlay = false;
+        audio.pause();
+      },
       // Un fondu en cours ne doit jamais couper la musique suivante.
-      _cancelFade() { clearInterval(this._fade); this._fade = null; }
+      _cancelFade() { clearInterval(this._fade); this._fade = null; audio.volume = level; }
     };
   })();
 })(window.MQ);

@@ -3,7 +3,7 @@
  * Il choisit les titres, envoie les manches, corrige chaque essai, tient les scores
  * et enchaîne automatiquement les manches. Il ne touche jamais à l'écran.
  *
- * Messages envoyés :  lobby, loading, round, feedback, progress, reveal, end, fail
+ * Messages envoyés :  lobby, loading, round, feedback, progress, pause, reveal, end, fail
  * Messages reçus :    guess, timeup
  */
 window.MQ = window.MQ || {};
@@ -58,6 +58,31 @@ window.MQ = window.MQ || {};
       this.code = null;
       this.state = 'lobby';
       this.roundSeq = 0;
+      this.paused = false;
+    }
+
+    /* Un seul minuteur (fin de manche ou fin d'intertitre), qu'on peut mettre en pause. */
+    schedule(fn, ms) {
+      clearTimeout(this.timer);
+      this.timerFn = fn;
+      if (this.paused) { this.timerLeft = ms; return; }
+      this.timerAt = Date.now() + ms;
+      this.timer = setTimeout(() => { this.timerFn = null; fn(); }, ms);
+    }
+    cancelSchedule() { clearTimeout(this.timer); this.timerFn = null; }
+
+    pause() {
+      if (this.paused || (this.state !== 'round' && this.state !== 'reveal')) return;
+      this.paused = true;
+      this.timerLeft = Math.max(0, this.timerAt - Date.now());
+      clearTimeout(this.timer);
+      this.send(null, { t: 'pause', paused: true });
+    }
+    resume() {
+      if (!this.paused) return;
+      this.paused = false;
+      this.send(null, { t: 'pause', paused: false });
+      if (this.timerFn) this.schedule(this.timerFn, this.timerLeft);
     }
 
     publicPlayers() {
@@ -82,6 +107,7 @@ window.MQ = window.MQ || {};
       if (this.state === 'round' && this.round) { // rejoint en cours de manche
         this.round.ps.set(id, freshState());
         this.send(id, this.round.msg);
+        if (this.paused) this.send(id, { t: 'pause', paused: true });
       }
     }
 
@@ -94,7 +120,8 @@ window.MQ = window.MQ || {};
     setSettings(s) { Object.assign(this.settings, s); this.lobby(); }
 
     start() {
-      clearTimeout(this.autoNext);
+      this.cancelSchedule();
+      this.paused = false;
       this.players.forEach(p => { p.score = 0; p.streak = 0; });
       this.pool = MQ.poolFor(this.settings);
       this.queue = MQ.shuffle(this.pool);
@@ -144,13 +171,12 @@ window.MQ = window.MQ || {};
       this.players.forEach(p => ps.set(p.id, freshState()));
       this.round = { id: seq, track, options, msg, ps };
       this.state = 'round';
-      clearTimeout(this.deadline);
-      this.deadline = setTimeout(() => this.finishRound(), ROUND_SECONDS * 1000 + GRACE_MS);
       this.send(null, msg);
+      this.schedule(() => this.finishRound(), ROUND_SECONDS * 1000 + GRACE_MS);
     }
 
     receive(id, msg) {
-      if (!msg || this.state !== 'round') return;
+      if (!msg || this.state !== 'round' || (this.paused && msg.t === 'guess')) return;
       const r = this.round;
       const st = r.ps.get(id);
       if (msg.id !== r.id || !st || !this.players.has(id)) return;
@@ -210,7 +236,7 @@ window.MQ = window.MQ || {};
 
     finishRound() {
       if (this.state !== 'round') return;
-      clearTimeout(this.deadline);
+      this.cancelSchedule();
       this.state = 'reveal';
       const r = this.round;
       const results = [];
@@ -236,8 +262,7 @@ window.MQ = window.MQ || {};
         answerIndex: r.options ? r.options.indexOf(song) : null,
         results, standings: this.standings()
       });
-      clearTimeout(this.autoNext);
-      this.autoNext = setTimeout(() => this.next(), BREAK_MS);
+      this.schedule(() => this.next(), BREAK_MS);
     }
 
     next() {
@@ -249,14 +274,14 @@ window.MQ = window.MQ || {};
     }
 
     backToLobby() {
-      clearTimeout(this.deadline);
-      clearTimeout(this.autoNext);
+      this.cancelSchedule();
+      this.paused = false;
       this.roundSeq++;
       this.state = 'lobby';
       this.lobby();
     }
 
-    destroy() { clearTimeout(this.deadline); clearTimeout(this.autoNext); this.roundSeq++; this.state = 'closed'; }
+    destroy() { this.cancelSchedule(); this.roundSeq++; this.state = 'closed'; }
   }
 
   MQ.BlindtestEngine = Engine;

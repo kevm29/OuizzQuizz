@@ -18,6 +18,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   min-height: 100vh;
@@ -288,6 +289,43 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 .part-total { font: 800 16px var(--display); margin-left: 4px; }
 
 .break { position: relative; height: 34px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
-.break-fill { position: absolute; inset: 0; background: color-mix(in srgb, var(--amber) 55%, var(--surface)); transform: scaleX(0); transform-origin: left; transition-property: transform; transition-timing-function: linear; }
+.break-fill { position: absolute; inset: 0; background: color-mix(in srgb, var(--amber) 55%, var(--surface)); transform: scaleX(0); transform-origin: left; }
 .break-text { position: absolute; inset: 0; display: grid; place-items: center; font: 500 14px var(--mono); color: var(--fg); }
 @media (max-width: 480px) { .badges { grid-template-columns: 1fr; } }
+
+/* ---------- v4 : volume, pause, tableau des scores, musique précédente ---------- */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.volume { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.vol-btn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; cursor: pointer; color: var(--fg); }
+.vol-btn.muted { color: var(--bad); }
+.vol-btn.muted #vol-waves { display: none; }
+#volume { width: 110px; accent-color: var(--amber); cursor: pointer; }
+
+.pause-btn { margin-left: auto; }
+.round-head { align-items: center; }
+.paused-banner { display: grid; justify-items: center; gap: 10px; padding: 18px; border-radius: var(--radius); border: 1px dashed var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--surface)); text-align: center; }
+.paused-banner p { margin: 0; font: 800 22px var(--display); color: var(--amber); }
+.is-paused .eq span { animation-play-state: paused !important; }
+
+.stars { color: var(--amber); letter-spacing: .05em; font-size: 14px; white-space: nowrap; }
+.scoreboard { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.scoreboard li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.scoreboard li.me { border-color: var(--amber); }
+.sb-name { font-weight: 600; overflow-wrap: anywhere; }
+.sb-dots { display: inline-flex; gap: 4px; }
+.sb-score { font: 500 14px var(--mono); font-variant-numeric: tabular-nums; }
+.initials { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 999px; font: 700 12px var(--mono); letter-spacing: .04em; background: var(--surface-2); border: 1px solid var(--line); color: var(--fg); }
+.initials.full { background: var(--good); border-color: var(--good); color: #062a1a; }
+.initials.part { background: var(--amber); border-color: var(--amber); color: var(--amber-ink); }
+
+.prev-song { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.prev-cover { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--surface-2); }
+.prev-text { display: grid; gap: 2px; min-width: 0; }
+.prev-text strong { overflow-wrap: anywhere; }
+.prev-text span.meta-line { color: var(--muted); font-size: 14px; }
+.prev-finders { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.prev-finders .none { color: var(--muted); font-size: 13px; }
+.side { display: grid; gap: 12px; }
+
+.board-name .initials { min-width: 26px; height: 26px; font-size: 11px; vertical-align: middle; }
+.btn:disabled { opacity: .45; cursor: default; filter: none; }
