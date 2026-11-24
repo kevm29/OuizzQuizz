@@ -11,7 +11,8 @@ window.MQ = window.MQ || {};
 (function (MQ) {
   const ROUND_SECONDS = 30;     // durée d'une manche (l'extrait fait 30 s)
   const BREAK_MS = 5000;        // écran intertitre entre deux musiques
-  const FLASH_MS = 1000;
+  const FLASH_SECONDS = [1, 2, 3]; // durées possibles du flash (réglage « Durée »)
+  const CHOICE_COUNTS = [4, 6, 8];  // nombre de propositions (réglage « Propositions »)
   const GRACE_MS = 6000;        // marge pour le chargement de l'extrait chez chacun
   // Chaque joueur a son propre chrono, lancé quand IL entend la musique.
   // Après le premier « temps écoulé », on attend les autres au plus ce délai.
@@ -22,7 +23,21 @@ window.MQ = window.MQ || {};
   const PTS_TITLE = 20;
   const PTS_HALF_TITLE = 10;
   const PTS_HALF_ARTIST = 10;
-  const PTS_CHOICE = 40;        // mode 4 propositions : artiste + titre d'un coup
+  const PTS_CHOICE = 40;        // mode propositions : artiste + titre d'un coup
+  // Jeu « Quelle année ? » : une seule réponse par manche.
+  // Année exacte : 50 pts ; à 2 ans près : 30 pts ; sinon dans la bonne décennie : 25 pts.
+  const PTS_YEAR_EXACT = 50;
+  const PTS_YEAR_NEAR = 30;
+  const PTS_YEAR_DECADE = 25;
+  const YEAR_NEAR = 2;
+  const yearPoints = (guess, year) => {
+    if (!guess || !year) return 0;
+    if (guess === year) return PTS_YEAR_EXACT;
+    if (Math.abs(guess - year) <= YEAR_NEAR) return PTS_YEAR_NEAR;
+    if (Math.floor(guess / 10) === Math.floor(year / 10)) return PTS_YEAR_DECADE;
+    return 0;
+  };
+  const YEAR_MIN = 1950;
   // Bonus de série : manches d'affilée avec au moins l'artiste ou le titre trouvé.
   // 2e manche : +20, 3e : +20, 4e : +20, puis +30 à chaque manche.
   const streakBonus = n => n < 2 ? 0 : n < 5 ? 20 : 30;
@@ -56,11 +71,17 @@ window.MQ = window.MQ || {};
     if (settings.listen === 'refrain') return MQ.refrainSongs.slice();
     const cat = MQ.categories.find(c => c.id === settings.category) || MQ.categories[0];
     const level = MQ.levels.find(l => l.id === settings.level) || MQ.levels[0];
-    return MQ.catalog.filter(s => cat.test(s) && level.test(s));
+    const style = MQ.styles.find(st => st.id === settings.style) || MQ.styles[0];
+    // Quelle année ? : pas de musique classique ni de titres d'avant 1950 (dates de composition).
+    const yearOk = settings.listen === 'year' ? (s => s.year >= YEAR_MIN && s.genre !== 'classique') : () => true;
+    return MQ.catalog.filter(s => cat.test(s) && level.test(s) && style.test(s) && yearOk(s));
   };
+  MQ.flashSeconds = s => FLASH_SECONDS.includes(Number(s.flashSec)) ? Number(s.flashSec) : 1;
+  MQ.choiceCount = s => CHOICE_COUNTS.includes(Number(s.choices)) ? Number(s.choices) : 4;
+  MQ.answerMode = s => s.listen === 'year' ? 'year' : s.answer === 'choice' ? 'choice' : 'text';
 
   // artist et title : 0, à moitié ou trouvé (en points) ; artistAt / titleAt : temps du joueur (ms)
-  const freshState = () => ({ artist: 0, title: 0, artistAt: null, titleAt: null, choice: null, done: false, timeup: false, guesses: 0 });
+  const freshState = () => ({ artist: 0, title: 0, artistAt: null, titleAt: null, choice: null, year: null, yearPts: 0, yearAt: null, done: false, timeup: false, guesses: 0 });
 
   class Engine {
     /** send(toId|null, msg) : null = tout le monde. */
@@ -68,7 +89,7 @@ window.MQ = window.MQ || {};
       this.send = send;
       this.hostId = hostId;
       this.players = new Map(); // id -> {id, name, score, streak}
-      this.settings = { rounds: 10, category: 'all', level: 'hits', listen: 'normal', answer: 'text' };
+      this.settings = { rounds: 10, category: 'all', level: 'hits', style: 'all', listen: 'normal', answer: 'text', flashSec: 1, choices: 4 };
       this.code = null;
       this.state = 'lobby';
       this.roundSeq = 0;
@@ -189,17 +210,19 @@ window.MQ = window.MQ || {};
       const s = this.settings;
       const refrain = s.listen === 'refrain';
       const seconds = refrain ? track.lines.length * LINE_SECONDS : ROUND_SECONDS;
+      const answer = MQ.answerMode(s);
+      const flashMs = MQ.flashSeconds(s) * 1000;
       const msg = {
         t: 'round', id: seq, n: this.index, total: this.total,
-        listen: s.listen, answer: s.answer, seconds,
+        listen: s.listen, answer, seconds,
         lines: refrain ? track.lines : null, lineSeconds: LINE_SECONDS,
         previewUrl: track.preview.previewUrl,
-        offset: s.listen === 'flash' ? Math.round(4 + Math.random() * 18) : 0,
-        flashMs: FLASH_MS
+        offset: s.listen === 'flash' ? Math.round(4 + Math.random() * (24 - flashMs / 1000)) : 0,
+        flashMs
       };
       let options = null;
-      if (s.answer === 'choice') {
-        options = MQ.shuffle([track.song].concat(pickDistractors(track.song, this.pool, 3)));
+      if (answer === 'choice') {
+        options = MQ.shuffle([track.song].concat(pickDistractors(track.song, this.pool, MQ.choiceCount(s) - 1)));
         msg.options = options.map(o => ({ title: o.title, artist: o.artist }));
       }
       const ps = new Map();
@@ -231,7 +254,15 @@ window.MQ = window.MQ || {};
       // Temps du joueur depuis qu'il entend la musique (pauses déduites), envoyé par son appareil.
       const max = r.msg.seconds * 1000;
       const at = Math.max(0, Math.min(max + GRACE_MS, Number(msg.elapsed) || max));
-      if (this.settings.answer === 'choice') {
+      if (r.msg.answer === 'year') {
+        const y = Math.round(Number(msg.year));
+        if (!(y >= 1000 && y <= 2100)) { st.guesses--; return; }
+        st.year = y;
+        st.yearPts = yearPoints(y, song.year);
+        st.yearAt = at;
+        st.done = true;
+        result = 'sent'; // on ne dévoile qu'à l'intertitre
+      } else if (r.msg.answer === 'choice') {
         st.choice = msg.choice;
         const ok = r.options[msg.choice] === song;
         if (ok) { st.artist = PTS_ARTIST; st.title = PTS_TITLE; st.artistAt = st.titleAt = at; }
@@ -261,7 +292,9 @@ window.MQ = window.MQ || {};
     }
 
     roundPoints(st) {
-      if (this.settings.answer === 'choice') return st.artist ? PTS_CHOICE : 0;
+      const mode = this.round ? this.round.msg.answer : MQ.answerMode(this.settings);
+      if (mode === 'year') return st.yearPts;
+      if (mode === 'choice') return st.artist ? PTS_CHOICE : 0;
       return st.artist + st.title;
     }
 
@@ -271,7 +304,7 @@ window.MQ = window.MQ || {};
         t: 'progress',
         players: Array.from(this.players.values()).filter(p => r.ps.has(p.id)).map(p => {
           const st = r.ps.get(p.id);
-          return { id: p.id, name: p.name, artist: st.artist, title: st.title, done: st.done || st.timeup };
+          return { id: p.id, name: p.name, artist: st.artist, title: st.title, answered: st.done, done: st.done || st.timeup };
         })
       });
     }
@@ -291,8 +324,9 @@ window.MQ = window.MQ || {};
       // Bonus de classement, élément par élément (artiste, puis titre).
       const rank = new Map(); // id -> {bonus, artistRank, titleRank}
       const inRound = Array.from(r.ps.keys()).filter(id => this.players.has(id));
-      if (inRound.length >= 2) {
-        const choice = this.settings.answer === 'choice';
+      const mode = r.msg.answer;
+      if (inRound.length >= 2 && mode !== 'year') {
+        const choice = mode === 'choice';
         (choice ? ['title'] : ['artist', 'title']).forEach(el => {
           inRound
             .filter(id => r.ps.get(id)[el] > 0)
@@ -313,9 +347,11 @@ window.MQ = window.MQ || {};
         if (!st) return;
         const rk = rank.get(p.id) || { bonus: 0 };
         const base = this.roundPoints(st);
-        const good = st.artist === PTS_ARTIST || st.title === PTS_TITLE;
+        const year = mode === 'year';
+        // Quelle année ? : la série compte les manches à 2 ans près ou mieux, sans bonus (barème fixe).
+        const good = year ? st.yearPts >= PTS_YEAR_NEAR : st.artist === PTS_ARTIST || st.title === PTS_TITLE;
         p.streak = good ? p.streak + 1 : 0;
-        const bonus = good ? streakBonus(p.streak) : 0;
+        const bonus = good && !year ? streakBonus(p.streak) : 0;
         // Refrain : à quelle ligne le joueur a trouvé l'artiste ou le titre en entier.
         let line = null, lineBonus = 0;
         if (r.msg.listen === 'refrain' && good) {
@@ -327,7 +363,9 @@ window.MQ = window.MQ || {};
         }
         p.score += base + bonus + rk.bonus + lineBonus;
         // Rapidité, pour départager les égalités : temps de chaque réponse trouvée (artiste, titre, même à moitié).
-        if (this.settings.answer === 'choice') {
+        if (year) {
+          if (st.yearPts && st.yearAt != null) { p.timeSum = (p.timeSum || 0) + st.yearAt; p.found = (p.found || 0) + 1; }
+        } else if (mode === 'choice') {
           if (st.title && st.titleAt != null) { p.timeSum = (p.timeSum || 0) + st.titleAt; p.found = (p.found || 0) + 1; }
         } else {
           ['artist', 'title'].forEach(el => {
@@ -335,7 +373,7 @@ window.MQ = window.MQ || {};
           });
         }
         results.push({
-          id: p.id, name: p.name, artist: st.artist, title: st.title, choice: st.choice,
+          id: p.id, name: p.name, artist: st.artist, title: st.title, choice: st.choice, year: st.year, yearPts: st.yearPts,
           guesses: st.guesses, base, bonus, rankBonus: rk.bonus, artistRank: rk.artistRank || null, titleRank: rk.titleRank || null,
           line, lineBonus, pts: base + bonus + rk.bonus + lineBonus, streak: p.streak
         });
@@ -373,5 +411,7 @@ window.MQ = window.MQ || {};
   }
 
   MQ.BlindtestEngine = Engine;
-  MQ.BLINDTEST_RULES = { RANK_BONUS, PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS, LINE_SECONDS, LINE_BONUS };
+  MQ.BLINDTEST_RULES = { RANK_BONUS, PTS_ARTIST, PTS_TITLE, PTS_HALF_TITLE, PTS_HALF_ARTIST, PTS_CHOICE, ROUND_SECONDS, BREAK_MS, LINE_SECONDS, LINE_BONUS,
+    PTS_YEAR_EXACT, PTS_YEAR_NEAR, PTS_YEAR_DECADE, YEAR_NEAR, YEAR_MIN, FLASH_SECONDS, CHOICE_COUNTS };
+  MQ.yearPoints = yearPoints;
 })(window.MQ);
