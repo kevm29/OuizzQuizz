@@ -385,3 +385,21 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 .board.standings.final li { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .board-speed { font: 500 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .tie-tag { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font: 500 11px var(--mono); color: var(--amber); border: 1px solid var(--amber); vertical-align: middle; }
+
+/* ---------- Quelle année ? ---------- */
+.year-form { display: grid; gap: 12px; justify-items: stretch; }
+.year-row { display: flex; gap: 8px; justify-content: center; align-items: center; }
+.year-input {
+  width: 6ch; text-align: center; font: 800 40px/1 var(--display); letter-spacing: .02em;
+  padding: 10px 12px; font-variant-numeric: tabular-nums;
+}
+.year-nudge { min-width: 52px; padding-inline: 10px; font-family: var(--mono); }
+.year-slider { width: 100%; accent-color: var(--amber); height: 28px; }
+.year-scale { display: flex; justify-content: space-between; font: 500 12px var(--mono); color: var(--muted); margin-top: -8px; }
+.year-form .btn.primary { justify-self: center; min-width: 180px; }
+.year-zone.sent .year-input { border-color: var(--amber); }
+.reveal-year { margin: 0; font: 800 clamp(40px, 8vw, 64px)/1 var(--display); color: var(--amber); letter-spacing: -.02em; }
+@media (max-width: 480px) {
+  .year-input { font-size: 32px; }
+  .year-nudge { min-width: 44px; }
+}

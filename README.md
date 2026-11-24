@@ -5,9 +5,9 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 ## Sous-jeux
 
 - **Blind test** : un extrait de 30 s. On écrit l'artiste et/ou le titre (ou on choisit parmi 4 propositions).
-- **Flash 1 seconde** : une seule seconde de musique (réécoutable 2 fois), sur les 10 % de titres les plus connus du catalogue (~570).
+- **Flash** : 1, 2 ou 3 secondes de musique au choix (réécoutables 2 fois), sur les 10 % de titres les plus connus du catalogue (~860).
 - **Refrain** (test, 100 titres très connus, moitié en français) : pas de son, une ligne du refrain s'affiche, puis une autre toutes les 10 s (4 au plus), le titre caché en astérisques (une par lettre). Artiste et titre comme au blind test, bonus +20 / +10 / +5 si on trouve dès la 1re, 2e ou 3e ligne. Paroles lues à la volée sur [LRCLIB](https://lrclib.net) (rien n'est stocké dans le jeu) ; refrain = strophe marquée [Refrain] ou, à défaut, strophe qui revient le plus. Titres dans `js/data/refrain-songs.js`, détection dans `js/core/lyrics.js`, page de contrôle `refrain-test.html`.
-- *Quelle année ?* : à venir.
+- **Quelle année ?** : un extrait de 30 s, on donne l'année de sortie (case, curseur ou boutons ±1 / ±10 ; « 87 » = 1987). Une seule réponse par manche. Année exacte : **50 pts** ; à 2 ans près : **30 pts** ; sinon dans la bonne décennie : **25 pts** ; sinon 0. Pas de bonus de série ni de rapidité (barème fixe), mais à égalité le plus rapide passe devant. Mêmes filtres que le blind test (niveau, période, style), sans la musique classique.
 
 ## Règles de la réponse écrite
 
@@ -22,7 +22,7 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 - Fautes tolérées (lettres en trop, en moins ou différentes) : **3** pour les noms de 8 caractères et plus, 2 entre 5 et 7, 1 en dessous de 5. Réglable dans `js/core/match.js`.
 - Ce qui est entre parenthèses ou après « feat. » est facultatif. D'autres réponses acceptées peuvent être ajoutées avec `artistAlt` / `titleAlt` dans le catalogue.
 - **Égalité en fin de partie** : le plus rapide passe devant (temps moyen pour trouver l'artiste ou le titre, compté depuis que le joueur entend la musique). Le classement final affiche ce temps (⏱).
-- Mode 4 propositions : 40 pts pour la bonne réponse, mêmes bonus de série et de classement.
+- Mode propositions (4, 6 ou 8 choix) : 40 pts pour la bonne réponse, mêmes bonus de série et de classement.
 
 Le barème se règle en haut de `js/games/blindtest/engine.js`.
 
@@ -70,10 +70,11 @@ js/core/audio-source.js        recherche d'extraits (iTunes puis Deezer) + lecte
 js/core/match.js               correction des réponses écrites (Levenshtein)
 js/core/net.js                 multijoueur : créer / rejoindre une partie par code
 js/core/ui.js                  utilitaires d'interface
-js/data/catalog.js             catalogue des musiques + catégories
+js/data/fr-extra.js            titres français ajoutés (Top 50 / Top 100)
+js/data/catalog.js             catalogue des musiques + catégories + styles
 js/games/blindtest/engine.js   moteur de partie (tourne chez l'hôte ou en solo)
 js/games/blindtest/view.js     écrans : menu, salon, manche, révélation, fin
-js/app.js                      accueil et navigation (#blindtest, #flash, #refrain, #rejoindre-CODE)
+js/app.js                      accueil et navigation (#blindtest, #flash, #refrain, #year, #rejoindre-CODE)
 ```
 
 Le moteur et les écrans ne se parlent que par messages (`round`, `answer`, `reveal`…). En solo le moteur tourne dans la page ; en ligne il tourne chez l'hôte et les messages passent par PeerJS. Un nouveau sous-jeu peut reprendre le même découpage.
@@ -96,14 +97,18 @@ Puis ajouter le `<script>` dans `index.html`, avant `js/app.js`.
 
 ## Catalogue
 
-Environ 5 700 titres : 100 par an de 1970 à 2026 (hit-parade français + Billboard Hot 100, fichier `js/data/big-catalog.js`, généré), plus une quinzaine de classiques ajoutés à la main dans `js/data/catalog.js` (années 60, chanson française).
+Environ 8 600 titres :
+- `js/data/big-catalog.js` (généré) : hit-parade français + Billboard Hot 100 de 1970 à 2026, plus des classiques choisis à la main (rock, métal, rap, électro, chanson, génériques, classique…).
+- `js/data/fr-extra.js` : 521 titres français de plus (hits du Top 50 / Top 100 de 1960 à 2025) qui n'étaient pas dans le grand catalogue.
+- `js/data/catalog.js` : une poignée de classiques ajoutés à la main.
 
-- **Niveau** (blind test normal) : « Les grands tubes » = célébrité 4 ou 5 sur 5 (~2 300 titres), ou « Tout le catalogue ».
-- **Période** : par décennie, ou chanson française.
-- **Flash 1 seconde** : les 10 % les plus connus selon un classement fin pensé pour un public français : meilleur score entre le rang au hit-parade français et le succès au Billboard (pic + semaines, pondéré 0,85), bonus si le titre a marché des deux côtés. Formule dans `MQ.fineFame` (`js/data/catalog.js`).
+- **Niveau** (blind test et Quelle année ?) : « Les grands tubes » = célébrité 4 ou 5 sur 5 (~3 600 titres), ou « Tout le catalogue ».
+- **Période** : par décennie, ou chanson française (~2 100 titres : chansons en français, ou instrumentaux d'artistes français ; les titres anglais, italiens, espagnols… n'en font pas partie).
+- **Style** : pop, rock, métal, rap / hip-hop, R&B / soul, électro / dance, disco / funk, chanson / variété, reggae, country / folk, latino / monde, jazz / crooners, films-séries-fête, classique. Se combine avec la période (ex. rap + chanson française). Chaque titre a un genre (dernière colonne du catalogue) ; les styles regroupent ces genres dans `MQ.styles` (`js/data/catalog.js`).
+- **Flash** : les 10 % les plus connus selon un classement fin pensé pour un public français : meilleur score entre le rang au hit-parade français et le succès au Billboard (pic + semaines, pondéré 0,85), bonus si le titre a marché des deux côtés. Formule dans `MQ.fineFame` (`js/data/catalog.js`).
 
 Un titre sans extrait sur iTunes ni Deezer est sauté automatiquement.
 
 ## Ajouter des musiques
 
-Une ligne dans la liste des classiques de `js/data/catalog.js` : `{ title: '…', artist: '…', year: 1999 }`. Ajouter `fr: true` pour la chanson française.
+Une ligne dans la liste des classiques de `js/data/catalog.js` : `{ title: '…', artist: '…', year: 1999, genre: 'rock' }`. Ajouter `fr: true` pour la chanson française. Pour un titre français, on peut aussi ajouter une ligne à `js/data/fr-extra.js` (même format que le grand catalogue).

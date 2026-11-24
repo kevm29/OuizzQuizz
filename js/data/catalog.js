@@ -2,7 +2,7 @@
  * Classiques choisis à la main (fusionnés avec le grand catalogue plus bas).
  * Seuls le titre, l'artiste et l'année sont stockés : l'extrait est cherché à la volée.
  * fr: true = chanson francophone (catégorie "Chanson française").
- * top: true = parmi les plus célèbres (utilisés par le mode Flash 1 seconde).
+ * top: true = parmi les plus célèbres (utilisés par le mode Flash).
  * artistAlt / titleAlt = autres réponses acceptées en mode réponse écrite.
  * Pour ajouter un titre : une ligne de plus, rien d'autre à faire.
  */
@@ -10,7 +10,7 @@ window.MQ = window.MQ || {};
 
 MQ.classics = [
   // 60s / 70s
-  { title: 'Hey Jude', artist: 'The Beatles', year: 1968, top: true },
+  { title: 'Hey Jude', artist: 'The Beatles', year: 1968, top: true, genre: 'rock' },
   { title: 'Satisfaction', artist: 'The Rolling Stones', year: 1965 },
   { title: 'Respect', artist: 'Aretha Franklin', year: 1967 },
   { title: 'Stayin\' Alive', artist: 'Bee Gees', year: 1977, top: true },
@@ -18,7 +18,7 @@ MQ.classics = [
   { title: 'Dancing Queen', artist: 'ABBA', year: 1976, top: true },
   { title: 'Hotel California', artist: 'Eagles', year: 1976, top: true },
   { title: 'I Will Survive', artist: 'Gloria Gaynor', year: 1978, top: true },
-  { title: 'Imagine', artist: 'John Lennon', year: 1971, top: true },
+  { title: 'Imagine', artist: 'John Lennon', year: 1971, top: true, genre: 'rock' },
   { title: 'September', artist: 'Earth, Wind & Fire', year: 1978, artistAlt: ['Earth Wind Fire'] },
   { title: 'Superstition', artist: 'Stevie Wonder', year: 1972 },
   { title: 'Le Freak', artist: 'CHIC', year: 1978, artistAlt: ['Nile Rodgers'] },
@@ -103,7 +103,8 @@ MQ.classics = [
 (function () {
   const key = s => MQ.match.normalize(s.artist.split(/\s+(?:featuring|feat\.?|ft\.?|with|duet with|x)\s+/i)[0]) + '|' + MQ.match.normalize(s.title.replace(/\s*\(.*?\)\s*/g, ' '));
 
-  const big = (MQ.bigCatalogRows || []).map(r => ({
+  const rows = (MQ.bigCatalogRows || []).concat(MQ.frExtraRows || []);
+  const big = rows.map(r => ({
     year: r[0], artist: r[1], title: r[2], fame: r[3], score: r[4],
     source: r[5], frRank: r[6], usPeak: r[7], usWeeks: r[8], fr: !!r[9], genre: r[10] || null
   }));
@@ -115,7 +116,7 @@ MQ.classics = [
       if (c.artistAlt) twin.artistAlt = c.artistAlt;
       if (c.titleAlt) twin.titleAlt = c.titleAlt;
       if (c.top) twin.classic = true;
-    } else extra.push(Object.assign({ fame: 5, classic: true, fr: !!c.fr }, c));
+    } else extra.push(Object.assign({ fame: 5, classic: true, fr: !!c.fr, genre: c.fr ? 'chanson' : 'pop' }, c));
   });
 
   /*
@@ -136,7 +137,7 @@ MQ.classics = [
   MQ.catalog = big.concat(extra);
   MQ.catalog.forEach(s => { s.fine = MQ.fineFame(s); });
 
-  // Mode Flash 1 seconde : les 10 % les plus connus.
+  // Mode Flash : les 10 % les plus connus.
   const ranked = MQ.catalog.slice().sort((a, b) => b.fine - a.fine);
   const cut = Math.round(MQ.catalog.length * 0.10);
   ranked.slice(0, cut).forEach(s => { s.top = true; });
@@ -159,3 +160,26 @@ MQ.categories = [
   { id: '2020', label: 'Années 2020', test: s => s.year >= 2020 },
   { id: 'fr', label: 'Chanson française', test: s => !!s.fr }
 ];
+
+/*
+ * Styles (réglage « Style »). Chaque titre a un genre (colonne genre du catalogue) ;
+ * un style regroupe un ou plusieurs genres.
+ */
+MQ.styles = [
+  { id: 'all', label: 'Tous les styles', genres: null },
+  { id: 'pop', label: 'Pop', genres: ['pop'] },
+  { id: 'rock', label: 'Rock', genres: ['rock', 'punk'] },
+  { id: 'metal', label: 'Métal', genres: ['metal'] },
+  { id: 'rap', label: 'Rap / Hip-hop', genres: ['rap'] },
+  { id: 'soul', label: 'R&B / Soul', genres: ['soul'] },
+  { id: 'electro', label: 'Électro / Dance', genres: ['electro'] },
+  { id: 'disco', label: 'Disco / Funk', genres: ['disco', 'funk'] },
+  { id: 'chanson', label: 'Chanson / Variété', genres: ['chanson'] },
+  { id: 'reggae', label: 'Reggae', genres: ['reggae'] },
+  { id: 'country', label: 'Country / Folk', genres: ['country', 'folk'] },
+  { id: 'latino', label: 'Latino / Monde', genres: ['world'] },
+  { id: 'jazz', label: 'Jazz / Crooners', genres: ['jazz'] },
+  { id: 'films', label: 'Films, séries & fête', genres: ['soundtrack', 'generique', 'fete'] },
+  { id: 'classique', label: 'Classique', genres: ['classique'] }
+];
+MQ.styles.forEach(st => { st.test = st.genres ? (s => st.genres.includes(s.genre)) : () => true; });
