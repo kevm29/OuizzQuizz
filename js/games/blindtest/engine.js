@@ -67,6 +67,7 @@ window.MQ = window.MQ || {};
   }
 
   MQ.poolFor = function (settings) {
+    if (settings.listen === 'eurovision') return MQ.escPool(settings);
     if (settings.listen === 'flash') return MQ.catalog.filter(s => s.top);
     if (settings.listen === 'refrain') return MQ.refrainSongs.slice();
     const cat = MQ.categories.find(c => c.id === settings.category) || MQ.categories[0];
@@ -78,7 +79,17 @@ window.MQ = window.MQ || {};
   };
   MQ.flashSeconds = s => FLASH_SECONDS.includes(Number(s.flashSec)) ? Number(s.flashSec) : 1;
   MQ.choiceCount = s => CHOICE_COUNTS.includes(Number(s.choices)) ? Number(s.choices) : 4;
-  MQ.answerMode = s => s.listen === 'year' ? 'year' : s.answer === 'choice' ? 'choice' : 'text';
+  MQ.answerMode = s => s.listen === 'year' ? 'year' : s.listen === 'eurovision' ? 'country' : s.answer === 'choice' ? 'choice' : 'text';
+  MQ.isChoiceMode = a => a === 'choice' || a === 'country';
+  const ESC_CHOICES = 6;
+  // Eurovision : 5 autres pays, pris d'abord parmi les participants de la même année.
+  function pickCountries(song) {
+    const sameYear = MQ.shuffle(Array.from(new Set(MQ.eurovision.filter(s => s.year === song.year).map(s => s.country))));
+    const all = MQ.shuffle(Object.keys(MQ.escCountries));
+    const out = [song.country];
+    for (const c of sameYear.concat(all)) { if (out.length >= ESC_CHOICES) break; if (!out.includes(c)) out.push(c); }
+    return MQ.shuffle(out);
+  }
 
   // artist et title : 0, à moitié ou trouvé (en points) ; artistAt / titleAt : temps du joueur (ms)
   const freshState = () => ({ artist: 0, title: 0, artistAt: null, titleAt: null, choice: null, year: null, yearPts: 0, yearAt: null, done: false, timeup: false, guesses: 0 });
@@ -89,7 +100,8 @@ window.MQ = window.MQ || {};
       this.send = send;
       this.hostId = hostId;
       this.players = new Map(); // id -> {id, name, score, streak}
-      this.settings = { rounds: 10, category: 'all', level: 'hits', style: 'all', listen: 'normal', answer: 'text', flashSec: 1, choices: 4 };
+      this.settings = { rounds: 10, category: 'all', level: 'hits', style: 'all', listen: 'normal', answer: 'text', flashSec: 1, choices: 4,
+        escPeriod: 'all', escDecades: [], escFrom: 1956, escTo: 2026, escLevel: 'all' };
       this.code = null;
       this.state = 'lobby';
       this.roundSeq = 0;
@@ -221,7 +233,10 @@ window.MQ = window.MQ || {};
         flashMs
       };
       let options = null;
-      if (answer === 'choice') {
+      if (answer === 'country') {
+        options = pickCountries(track.song);
+        msg.options = options.map(c => ({ title: MQ.escCountryLabel(c), artist: '' }));
+      } else if (answer === 'choice') {
         options = MQ.shuffle([track.song].concat(pickDistractors(track.song, this.pool, MQ.choiceCount(s) - 1)));
         msg.options = options.map(o => ({ title: o.title, artist: o.artist }));
       }
@@ -262,9 +277,9 @@ window.MQ = window.MQ || {};
         st.yearAt = at;
         st.done = true;
         result = 'sent'; // on ne dévoile qu'à l'intertitre
-      } else if (r.msg.answer === 'choice') {
+      } else if (MQ.isChoiceMode(r.msg.answer)) {
         st.choice = msg.choice;
-        const ok = r.options[msg.choice] === song;
+        const ok = r.msg.answer === 'country' ? r.options[msg.choice] === song.country : r.options[msg.choice] === song;
         if (ok) { st.artist = PTS_ARTIST; st.title = PTS_TITLE; st.artistAt = st.titleAt = at; }
         st.done = true;
         result = 'sent'; // on ne dévoile qu'à l'intertitre
@@ -294,7 +309,7 @@ window.MQ = window.MQ || {};
     roundPoints(st) {
       const mode = this.round ? this.round.msg.answer : MQ.answerMode(this.settings);
       if (mode === 'year') return st.yearPts;
-      if (mode === 'choice') return st.artist ? PTS_CHOICE : 0;
+      if (MQ.isChoiceMode(mode)) return st.artist ? PTS_CHOICE : 0;
       return st.artist + st.title;
     }
 
@@ -326,7 +341,7 @@ window.MQ = window.MQ || {};
       const inRound = Array.from(r.ps.keys()).filter(id => this.players.has(id));
       const mode = r.msg.answer;
       if (inRound.length >= 2 && mode !== 'year') {
-        const choice = mode === 'choice';
+        const choice = MQ.isChoiceMode(mode);
         (choice ? ['title'] : ['artist', 'title']).forEach(el => {
           inRound
             .filter(id => r.ps.get(id)[el] > 0)
@@ -365,7 +380,7 @@ window.MQ = window.MQ || {};
         // Rapidité, pour départager les égalités : temps de chaque réponse trouvée (artiste, titre, même à moitié).
         if (year) {
           if (st.yearPts && st.yearAt != null) { p.timeSum = (p.timeSum || 0) + st.yearAt; p.found = (p.found || 0) + 1; }
-        } else if (mode === 'choice') {
+        } else if (MQ.isChoiceMode(mode)) {
           if (st.title && st.titleAt != null) { p.timeSum = (p.timeSum || 0) + st.titleAt; p.found = (p.found || 0) + 1; }
         } else {
           ['artist', 'title'].forEach(el => {
@@ -382,10 +397,10 @@ window.MQ = window.MQ || {};
       const last = this.index >= this.total;
       this.send(null, {
         t: 'reveal', id: r.id, n: this.index, total: this.total, last, breakMs: BREAK_MS,
-        song: { title: song.title, artist: song.artist, year: song.year },
+        song: { title: song.title, artist: song.artist, year: song.year, country: song.country || null, place: song.place == null ? null : song.place, final: song.final },
         lines: r.msg.lines ? r.msg.lines.length : 0,
         artwork: preview.artwork, link: preview.link, source: preview.source,
-        answerIndex: r.options ? r.options.indexOf(song) : null,
+        answerIndex: r.options ? r.options.indexOf(r.msg.answer === 'country' ? song.country : song) : null,
         results, standings: this.standings()
       });
       this.schedule(() => this.next(), BREAK_MS);

@@ -413,3 +413,9 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 .disc-actions { justify-content: center; }
 .disc-history li { align-items: center; }
 .disc-again { padding: 4px 10px; font-size: 13px; margin-left: auto; }
+
+/* ---------- Eurovision ---------- */
+.esc-range { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.esc-year { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
+.esc-select { width: auto; padding: 8px 12px; font: 500 15px var(--mono); }
+.reveal-country { margin: 4px 0 0 !important; font: 800 20px/1.2 var(--display); color: var(--amber); }

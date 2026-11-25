@@ -8,6 +8,7 @@ Jeu musical en ligne composé de plusieurs sous-jeux, jouable seul ou à plusieu
 - **Flash** : 1, 2 ou 3 secondes de musique au choix (réécoutables 2 fois), sur les 10 % de titres les plus connus du catalogue (~860).
 - **Refrain** (test, 100 titres très connus, moitié en français) : pas de son, une ligne du refrain s'affiche, puis une autre toutes les 10 s (4 au plus), le titre caché en astérisques (une par lettre). Artiste et titre comme au blind test, bonus +20 / +10 / +5 si on trouve dès la 1re, 2e ou 3e ligne. Paroles lues à la volée sur [LRCLIB](https://lrclib.net) (rien n'est stocké dans le jeu) ; refrain = strophe marquée [Refrain] ou, à défaut, strophe qui revient le plus. Titres dans `js/data/refrain-songs.js`, détection dans `js/core/lyrics.js`, page de contrôle `refrain-test.html`.
 - **Quelle année ?** : un extrait de 30 s, on donne l'année de sortie (case, curseur ou boutons ±1 / ±10 ; « 87 » = 1987). Une seule réponse par manche. Année exacte : **50 pts** ; à 2 ans près : **30 pts** ; sinon dans la bonne décennie : **25 pts** ; sinon 0. Pas de bonus de série ni de rapidité (barème fixe), mais à égalité le plus rapide passe devant. Mêmes filtres que le blind test (niveau, période, style), sans la musique classique.
+- **Eurovision** : les 1 830 chansons du Concours Eurovision de 1956 à 2026 (demi-finales comprises). Un extrait de 30 s : retrouver le pays parmi 6 propositions (pris d'abord parmi les participants de la même année). 40 pts + bonus de série et de rapidité, comme le mode propositions. Années au choix : toutes, une ou plusieurs décennies, ou une plage précise (ex. 1974 → 1974) ; chansons : toutes, finalistes, top 10 ou vainqueurs. Données : [Unofficial Eurovision Song Contest Dataset](https://github.com/EurovisionAPI/dataset) (licence MIT), dans `js/data/eurovision.js`. Les chansons sans extrait sur iTunes ou Deezer (surtout les plus anciennes) sont sautées.
 - **Lecture découverte** : sans score. Des extraits de 30 s tirés au hasard s'enchaînent tout seuls (niveau, période et style au choix), avec titre, artiste, année et style. Boutons précédent / pause / suivant, liste des titres déjà écoutés (réécoutables), option « titre caché jusqu'à la fin » pour s'entraîner. Code dans `js/games/discover.js`.
 
 ## Règles de la réponse écrite
@@ -72,11 +73,12 @@ js/core/match.js               correction des réponses écrites (Levenshtein)
 js/core/net.js                 multijoueur : créer / rejoindre une partie par code
 js/core/ui.js                  utilitaires d'interface
 js/data/fr-extra.js            titres français ajoutés (Top 50 / Top 100)
+js/data/eurovision.js          toutes les chansons de l'Eurovision (1956-2026)
 js/data/catalog.js             catalogue des musiques + catégories + styles
 js/games/blindtest/engine.js   moteur de partie (tourne chez l'hôte ou en solo)
 js/games/blindtest/view.js     écrans : menu, salon, manche, révélation, fin
 js/games/discover.js           lecture découverte (radio aléatoire, sans score)
-js/app.js                      accueil et navigation (#blindtest, #flash, #refrain, #year, #decouverte, #rejoindre-CODE)
+js/app.js                      accueil et navigation (#blindtest, #flash, #refrain, #year, #eurovision, #decouverte, #rejoindre-CODE)
 ```
 
 Le moteur et les écrans ne se parlent que par messages (`round`, `answer`, `reveal`…). En solo le moteur tourne dans la page ; en ligne il tourne chez l'hôte et les messages passent par PeerJS. Un nouveau sous-jeu peut reprendre le même découpage.

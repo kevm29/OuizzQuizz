@@ -17,9 +17,11 @@
     { id: 'text', label: 'Écrire la réponse', help: () => 'Une seule barre, essais illimités, jusqu’à 3 fautes tolérées. Artiste 20 pts, titre 20 pts, moitié de l’un ou l’autre 10 pts. À plusieurs : +30 %, +20 %, +10 % pour les 3 premiers à trouver.' },
     { id: 'choice', label: 'Propositions', help: s => 'Choisis le bon titre parmi ' + MQ.choiceCount(s) + ' : 40 pts.' }
   ];
+  const ESC_HELP = { help: () => 'Un extrait d’une chanson de l’Eurovision : retrouve le pays parmi 6 propositions. 40 pts, plus les bonus de série et de rapidité.' };
   const gameTitle = s => s.listen === 'flash' ? 'Flash ' + MQ.flashSeconds(s) + ' s'
-    : s.listen === 'refrain' ? 'Refrain' : s.listen === 'year' ? 'Quelle année ?' : 'Blind test';
-  const gameCard = s => s.listen === 'flash' ? 'Flash' : s.listen === 'refrain' ? 'Refrain' : s.listen === 'year' ? 'Quelle année ?' : 'Blind test';
+    : s.listen === 'refrain' ? 'Refrain' : s.listen === 'year' ? 'Quelle année ?' : s.listen === 'eurovision' ? 'Eurovision' : 'Blind test';
+  const gameCard = s => s.listen === 'flash' ? 'Flash' : s.listen === 'refrain' ? 'Refrain' : s.listen === 'year' ? 'Quelle année ?' : s.listen === 'eurovision' ? 'Eurovision' : 'Blind test';
+  const countryLine = song => song && song.country ? ' · ' + MQ.escCountryLabel(song.country) : '';
 
   function mount(root, ctx, preset) {
     let screenCleanups = [];
@@ -29,7 +31,8 @@
       screen: null, round: null, history: [], score: 0
     };
     const saved = MQ.store.get('blindtest.settings', {});
-    let settings = Object.assign({ rounds: 10, category: 'all', level: 'hits', style: 'all', listen: 'normal', answer: 'text', flashSec: 1, choices: 4 }, saved, preset || {});
+    let settings = Object.assign({ rounds: 10, category: 'all', level: 'hits', style: 'all', listen: 'normal', answer: 'text', flashSec: 1, choices: 4,
+      escPeriod: 'all', escDecades: [], escFrom: 1956, escTo: 2026, escLevel: 'all' }, saved, preset || {});
     if (!MQ.categories.some(c => c.id === settings.category)) settings.category = 'all';
     if (!MQ.styles.some(c => c.id === settings.style)) settings.style = 'all';
     if (settings.answer !== 'choice') settings.answer = 'text';
@@ -88,10 +91,10 @@
           p.artwork ? h('img.prev-cover', { src: p.artwork, alt: '', width: 56, height: 56 }) : h('div.prev-cover'),
           h('div.prev-text',
             h('strong', p.song.title),
-            h('span.meta-line', p.song.artist + ' · ' + p.song.year),
+            h('span.meta-line', p.song.artist + ' · ' + p.song.year + countryLine(p.song)),
             h('div.prev-finders', finders.length
               ? finders.map(r => {
-                  const full = p.answer === 'choice' ? true : p.answer === 'year' ? r.yearPts === R.PTS_YEAR_EXACT : r.artist === R.PTS_ARTIST && r.title === R.PTS_TITLE;
+                  const full = MQ.isChoiceMode(p.answer) ? true : p.answer === 'year' ? r.yearPts === R.PTS_YEAR_EXACT : r.artist === R.PTS_ARTIST && r.title === R.PTS_TITLE;
                   return h('span.initials' + (full ? '.full' : '.part'), {
                     title: r.name + (p.answer === 'year' ? ' : ' + r.year + (full ? ' (pile)' : '') : full ? ' : tout trouvé' : ' : trouvé en partie')
                   }, initials(r.name));
@@ -135,6 +138,7 @@
 
     function settingsBlock(onChange, readOnly) {
       const set = (k, v) => { settings[k] = v; saveSettings(); onChange(); };
+      if (settings.listen === 'eurovision') return escSettings(set, readOnly);
       const pool = MQ.poolFor(settings);
       const refrain = settings.listen === 'refrain';
       const year = settings.listen === 'year';
@@ -167,6 +171,37 @@
         h('p.meta', listen.help(settings) + (year ? '' : ' ' + answer.help(settings)) + ' ' + pool.length.toLocaleString('fr-FR') + ' titres possibles.'
           + (pool.length < settings.rounds ? ' Pas assez de titres pour ce mélange : élargis la période, le niveau ou le style.' : ''))
       );
+    }
+
+    // Eurovision : toutes les années, des décennies (plusieurs au choix) ou une plage d'années précise.
+    function escSettings(set, readOnly) {
+      const pool = MQ.poolFor(settings);
+      const period = settings.escPeriod || 'all';
+      const decades = settings.escDecades || [];
+      const toggleDecade = id => {
+        const cur = period === 'decades' ? decades.slice() : [];
+        const i = cur.indexOf(id);
+        if (i >= 0) cur.splice(i, 1); else cur.push(id);
+        settings.escDecades = cur;
+        set('escPeriod', cur.length ? 'decades' : 'all');
+      };
+      const chip = (label, on, onclick) => h('button.chip', { type: 'button', role: 'checkbox', disabled: !!readOnly, 'aria-checked': String(on), onclick }, label);
+      const yearSelect = (key, label) => h('label.esc-year', label,
+        h('select.text-input.esc-select', { disabled: !!readOnly, 'aria-label': label, onchange: e => set(key, Number(e.target.value)) },
+          MQ.escYears.map(y => h('option', { value: y, selected: (settings[key] || (key === 'escFrom' ? 1956 : 2026)) === y }, String(y)))));
+      return h('div.settings',
+        h('div.field',
+          h('span.label', 'Années'),
+          h('div.chips', { role: 'group', 'aria-label': 'Années' },
+            chip('Toutes les années', period === 'all', () => set('escPeriod', 'all')),
+            MQ.escDecades.map(d => chip(d.label, period === 'decades' && decades.includes(d.id), () => toggleDecade(d.id))),
+            chip('Années précises…', period === 'range', () => set('escPeriod', 'range'))),
+          period === 'decades' ? h('p.meta', 'Tu peux cocher plusieurs décennies.') : null,
+          period === 'range' ? h('div.esc-range', yearSelect('escFrom', 'De'), yearSelect('escTo', 'à')) : null),
+        chipGroup('Chansons', MQ.escLevels.map(l => ({ id: l.id, label: l.label })), settings.escLevel || 'all', v => set('escLevel', v), readOnly),
+        chipGroup('Manches', [5, 10, 15].map(n => ({ id: n, label: n + ' manches' })), settings.rounds, v => set('rounds', v), readOnly),
+        h('p.meta', ESC_HELP.help() + ' ' + pool.length.toLocaleString('fr-FR') + (pool.length > 1 ? ' chansons possibles' : ' chanson possible') + ' (celles sans extrait sur iTunes ou Deezer sont sautées).'
+          + (pool.length < settings.rounds ? ' Pas assez de chansons : élargis les années.' : '')));
     }
 
     /* ---------- menu ---------- */
@@ -204,10 +239,12 @@
       renderSettings();
 
       root.append(h('section.panel.setup',
-        h('p.eyebrow', settings.listen === 'refrain' ? 'Paroles' : settings.listen === 'year' ? 'Machine à remonter le temps' : 'Blind test'),
+        h('p.eyebrow', settings.listen === 'refrain' ? 'Paroles' : settings.listen === 'year' ? 'Machine à remonter le temps' : settings.listen === 'eurovision' ? 'Douze points' : 'Blind test'),
         title,
         settings.listen === 'refrain'
           ? h('p.lede', 'Pas de musique : une phrase du refrain apparaît, puis une deuxième, une troisième, une quatrième. Trouve l’artiste et le titre le plus tôt possible. Seul ou à plusieurs en ligne avec un code de partie.')
+          : settings.listen === 'eurovision'
+            ? h('p.lede', 'Toutes les chansons de l’Eurovision depuis 1956. Un extrait démarre : de quel pays est-ce ? Choisis parmi 6 propositions. Seul ou à plusieurs en ligne avec un code de partie.')
           : settings.listen === 'year'
             ? h('p.lede', 'Un extrait démarre : de quelle année est cette chanson ? Pile : 50 pts. À 2 ans près : 30 pts. Dans la bonne décennie : 25 pts. Seul ou à plusieurs en ligne avec un code de partie.')
             : h('p.lede', 'Un extrait démarre : trouve l’artiste et le titre avant la fin du chrono de 30 secondes. Bonus de série dès 2 manches réussies d’affilée. Seul ou à plusieurs en ligne avec un code de partie.'),
@@ -404,7 +441,7 @@
             h('div.year-scale', h('span', String(R.YEAR_MIN)), h('span', String(now))),
             yearBtn),
           h('p.meta', 'Pile : ' + R.PTS_YEAR_EXACT + ' pts · à ' + R.YEAR_NEAR + ' ans près : ' + R.PTS_YEAR_NEAR + ' pts · bonne décennie : ' + R.PTS_YEAR_DECADE + ' pts. Une seule réponse : prends ton temps, ou pas.'));
-      } else if (msg.answer === 'choice') {
+      } else if (MQ.isChoiceMode(msg.answer)) {
         buttons = msg.options.map((o, i) => h('button.option', {
           type: 'button', onclick: () => { if (stopped) return; toHost({ t: 'guess', id: msg.id, choice: i, elapsed: myElapsed() }); lock(); buttons[i].classList.add('picked'); status.textContent = isMulti() ? 'Réponse envoyée. On attend les autres…' : 'Réponse envoyée.'; }
         }, h('span.key', String(i + 1)), h('span.opt-text', h('strong', o.title), h('span', o.artist))));
@@ -436,6 +473,7 @@
           stars(S.streak),
           msg.listen === 'flash' ? h('span.pill.streak', 'Flash ' + Math.round(msg.flashMs / 1000) + ' s') : null,
           yearMode ? h('span.pill.streak', 'Quelle année ?') : null,
+          msg.answer === 'country' ? h('span.pill.streak', 'Eurovision') : null,
           pauseBtn),
         banner,
         refrain
@@ -496,7 +534,7 @@
         renderBoard();
         if (fb.done) {
           lock();
-          status.textContent = msg.answer === 'choice' ? status.textContent : 'Tout trouvé ! Bravo.';
+          status.textContent = MQ.isChoiceMode(msg.answer) ? status.textContent : 'Tout trouvé ! Bravo.';
         }
       };
       // Tableau des scores : total (scores précédents + points de la manche en cours), étoiles de série.
@@ -631,7 +669,7 @@
           if (stopped) return;
           if (S.paused) { MQ.player.pause(); MQ.player._resumeOnPlay = msg.listen !== 'flash'; }
           status.textContent = msg.listen === 'flash' ? (msg.flashMs > 1000 ? Math.round(msg.flashMs / 1000) + ' secondes… c’est quoi ?' : 'Une seconde… c’est quoi ?')
-            : yearMode ? 'C’est sorti en quelle année ?' : 'Quel est ce titre ?';
+            : yearMode ? 'C’est sorti en quelle année ?' : msg.answer === 'country' ? 'Quel pays ?' : 'Quel est ce titre ?';
           eq.classList.add('on');
           if (!S.paused) {
             if (input) { input.disabled = sendBtn.disabled = false; input.focus({ preventScroll: true }); }
@@ -692,7 +730,9 @@
           parts.push(h('span.part' + (mine.artist === R.PTS_ARTIST ? '.ok' : mine.artist ? '.mid' : '.ko'), 'Artiste ' + (mine.artist ? '+' + mine.artist : '0')));
           parts.push(h('span.part' + (mine.title === R.PTS_TITLE ? '.ok' : mine.title ? '.mid' : '.ko'), 'Titre ' + (mine.title ? '+' + mine.title : '0')));
         } else {
-          parts.push(h('span.part' + (mine.base ? '.ok' : '.ko'), mine.base ? 'Bonne réponse +' + mine.base : 'Mauvaise réponse'));
+          const picked = mine.choice != null && S.round && S.round.options && S.round.options[mine.choice];
+          parts.push(h('span.part' + (mine.base ? '.ok' : '.ko'), mine.base ? 'Bonne réponse +' + mine.base
+            : picked ? 'Raté : tu as dit ' + (S.round.answer === 'country' ? picked.title : picked.title + ' – ' + picked.artist) : 'Pas de réponse'));
         }
         const ord = n => n === 1 ? '1er' : n + 'e';
         if (mine.rankBonus) {
@@ -753,7 +793,9 @@
             h('p.verdict', 'C’était'),
             yearMode ? h('p.reveal-year', String(msg.song.year)) : null,
             h('p.reveal-title', msg.song.title),
-            h('p.reveal-artist', msg.song.artist + (yearMode ? '' : ' · ' + msg.song.year)),
+            msg.song.country ? h('p.reveal-country', MQ.escCountryLabel(msg.song.country)) : null,
+            h('p.reveal-artist', msg.song.artist + (yearMode ? '' : ' · ' + msg.song.year)
+              + (msg.song.country ? ' · ' + (msg.song.place === 1 ? 'vainqueur 🏆' : msg.song.place ? msg.song.place + 'e en finale' : msg.song.year === 2020 ? 'concours annulé' : 'éliminé en demi-finale') : '')),
             parts.length ? h('div.parts', parts, h('strong.part-total', '= ' + mine.pts + ' pts')) : null,
             msg.link ? h('a.source', { href: msg.link, target: '_blank', rel: 'noopener' }, 'Écouter en entier sur ' + msg.source) : null)),
         h('div.break', { role: 'progressbar', 'aria-label': 'Temps avant la suite' }, barFill, countdown),
@@ -792,7 +834,8 @@
       if (S.role === 'solo') {
         const s = msg.settings;
         const key = [s.listen, s.answer, s.listen === 'flash' ? 'top' + MQ.flashSeconds(s) : s.category + (s.style && s.style !== 'all' ? '+' + s.style : ''), s.rounds]
-          .concat(s.answer === 'choice' && s.listen !== 'year' ? [MQ.choiceCount(s)] : []).join(':');
+          .concat(s.answer === 'choice' && s.listen !== 'year' && s.listen !== 'eurovision' ? [MQ.choiceCount(s)] : [])
+          .concat(s.listen === 'eurovision' ? [s.escPeriod === 'decades' ? (s.escDecades || []).slice().sort().join('+') : s.escPeriod === 'range' ? s.escFrom + '-' + s.escTo : 'all', s.escLevel || 'all'] : []).join(':');
         const best = MQ.store.get('blindtest.best3', {});
         if (!best[key] || me.score > best[key]) { best[key] = me.score; MQ.store.set('blindtest.best3', best); recordLine = ' · nouveau record !'; }
         else recordLine = ' · record : ' + best[key] + ' pts';
@@ -811,7 +854,7 @@
             const full = isFull(x.res);
             return h('li' + (full ? '.ok' : x.res.pts ? '.half' : '.ko'),
               h('span.mark', full ? '✓' : x.res.pts ? '½' : '✗'),
-              h('span.recap-text', h('strong', x.song.title), ' – ' + x.song.artist,
+              h('span.recap-text', h('strong', x.song.title), ' – ' + x.song.artist + countryLine(x.song),
                 yearGame ? ' · ' + x.song.year + (x.res.year ? ' (toi : ' + x.res.year + ')' : ' (pas de réponse)') : ''),
               h('span.recap-pts', '+' + x.res.pts + (x.res.bonus ? ' (série +' + x.res.bonus + ')' : '')));
           }))),
@@ -850,6 +893,12 @@
     title: 'Quelle année ?',
     tagline: 'Un extrait : donne son année. Pile 50 pts, à 2 ans près 30 pts, bonne décennie 25 pts.',
     mount: (root, ctx) => mount(root, ctx, { listen: 'year' })
+  });
+  MQ.registerGame({
+    id: 'eurovision',
+    title: 'Eurovision',
+    tagline: 'Toutes les chansons depuis 1956 : retrouve le pays parmi 6. Par année ou par décennie.',
+    mount: (root, ctx) => mount(root, ctx, { listen: 'eurovision' })
   });
 
   MQ.mountBlindtest = mount;
