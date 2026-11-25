@@ -12,6 +12,68 @@
     return st ? st.label : null;
   }
 
+  /* ---------- avis (j'aime / je n'aime pas), gardés dans le navigateur ---------- */
+  const RATINGS_KEY = 'discover.ratings';
+  const songKey = s => (s.artist + '|' + s.title).toLowerCase();
+  const loadRatings = () => MQ.store.get(RATINGS_KEY, {}) || {};
+  function rate(song, preview, value) {
+    const all = loadRatings();
+    const k = songKey(song);
+    if (!value || (all[k] && all[k].rating === value)) delete all[k]; // re-cliquer annule l'avis
+    else all[k] = { rating: value, artist: song.artist, title: song.title, year: song.year, style: styleOf(song) || '',
+      fr: !!song.fr, link: (preview && preview.link) || '', at: new Date().toISOString() };
+    MQ.store.set(RATINGS_KEY, all);
+    return all[k] ? all[k].rating : 0;
+  }
+  const ratingOf = song => { const r = loadRatings()[songKey(song)]; return r ? r.rating : 0; };
+
+  /** Télécharge les avis en CSV (séparateur « ; », lisible directement par Excel / LibreOffice / Google Sheets). */
+  function exportRatings(which) {
+    const rows = Object.values(loadRatings())
+      .filter(r => which === 'all' || r.rating === 1)
+      .sort((a, b) => b.rating - a.rating || a.artist.localeCompare(b.artist, 'fr') || a.title.localeCompare(b.title, 'fr'));
+    const cell = v => { const t = String(v == null ? '' : v); return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const lines = [['Avis', 'Artiste', 'Titre', 'Année', 'Style', 'Chanson française', 'Noté le', 'Lien']]
+      .concat(rows.map(r => [r.rating === 1 ? 'J’aime' : 'Je n’aime pas', r.artist, r.title, r.year, r.style, r.fr ? 'oui' : '',
+        new Date(r.at).toLocaleDateString('fr-FR'), r.link]));
+    const csv = '\ufeff' + lines.map(l => l.map(cell).join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = (which === 'all' ? 'ouizzquizz-mes-avis-' : 'ouizzquizz-mes-coups-de-coeur-') + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  /** Bloc « Mes avis » : compteurs, export, liste des titres aimés. */
+  function ratingsPanel(onChange) {
+    const box = h('div.field.disc-ratings');
+    let confirmClear = false;
+    const render = () => {
+      const all = Object.values(loadRatings());
+      const likes = all.filter(r => r.rating === 1).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+      const dislikes = all.length - likes.length;
+      box.replaceChildren(
+        h('span.label', 'Mes avis'),
+        h('p.meta', all.length
+          ? likes.length + ' titre' + (likes.length > 1 ? 's' : '') + ' aimé' + (likes.length > 1 ? 's' : '') + ' · ' + dislikes + ' pas aimé' + (dislikes > 1 ? 's' : '')
+            + '. Gardés dans ce navigateur (ils restent tant que tu n’effaces pas les données du site).'
+          : 'Pas encore d’avis. Pendant l’écoute, clique sur 👍 ou 👎 : tes avis restent dans ce navigateur et tu peux les exporter quand tu veux.'),
+        all.length ? h('div.actions.disc-export',
+          h('button.btn.primary#disc-export-likes', { type: 'button', disabled: !likes.length, onclick: () => exportRatings('likes') }, 'Exporter mes j’aime (CSV)'),
+          h('button.btn.ghost#disc-export-all', { type: 'button', onclick: () => exportRatings('all') }, 'Exporter tous mes avis'),
+          h('button.btn.ghost#disc-clear', { type: 'button', onclick: () => {
+            if (!confirmClear) { confirmClear = true; render(); return; }
+            MQ.store.set(RATINGS_KEY, {}); confirmClear = false; render(); if (onChange) onChange();
+          } }, confirmClear ? 'Sûr ? Cliquer encore pour tout effacer' : 'Effacer')) : null,
+        likes.length ? h('details.disc-likes', h('summary', 'Voir mes j’aime'),
+          h('ol.recap', likes.map(r => h('li.ok', h('span.mark', '👍'),
+            h('span.recap-text', h('strong', r.title), ' – ' + r.artist + ' · ' + r.year))))) : null);
+    };
+    render();
+    box.refresh = render;
+    return box;
+  }
+
   function mount(root, ctx) {
     let cleanups = [];
     const saved = MQ.store.get('discover.settings', {});
@@ -54,7 +116,8 @@
         h('h1.display', 'Lecture découverte'),
         h('p.lede', 'Des extraits de 30 secondes, au hasard, les uns après les autres. Pour redécouvrir des tubes, réviser avant un blind test, ou juste écouter.'),
         host,
-        h('div.actions', startBtn, h('button.btn.ghost', { type: 'button', onclick: ctx.exit }, 'Autres jeux'))));
+        h('div.actions', startBtn, h('button.btn.ghost', { type: 'button', onclick: ctx.exit }, 'Autres jeux')),
+        ratingsPanel()));
       render();
     }
 
@@ -87,6 +150,22 @@
       const playBtn = h('button.btn.primary#disc-play', { type: 'button', onclick: togglePause }, 'Pause');
       const nextBtn = h('button.btn.ghost#disc-next', { type: 'button', onclick: () => go(idx + 1) }, 'Suivant ⏭');
       const revealBtn = h('button.btn.ghost#disc-reveal', { type: 'button', hidden: true, onclick: () => { revealed = true; showInfo(); } }, 'Voir le titre');
+      const likeBtn = h('button.btn.ghost.disc-rate#disc-like', { type: 'button', 'aria-pressed': 'false', onclick: () => doRate(1) }, '👍 J’aime');
+      const dislikeBtn = h('button.btn.ghost.disc-rate#disc-dislike', { type: 'button', 'aria-pressed': 'false', onclick: () => doRate(-1) }, '👎 Je n’aime pas');
+      const panel = ratingsPanel(() => { paintRating(); renderHistory(); });
+      function paintRating() {
+        const cur = history[idx];
+        const v = cur ? ratingOf(cur.song) : 0;
+        likeBtn.setAttribute('aria-pressed', String(v === 1));
+        dislikeBtn.setAttribute('aria-pressed', String(v === -1));
+        likeBtn.disabled = dislikeBtn.disabled = !cur;
+      }
+      function doRate(v) {
+        const cur = history[idx];
+        if (!cur) return;
+        rate(cur.song, cur.preview, v);
+        paintRating(); renderHistory(); panel.refresh();
+      }
       const list = h('ol.recap.disc-history');
       const counter = h('span.pill');
 
@@ -98,7 +177,9 @@
         h('div.stage.disc-stage', eq, status),
         h('div.break', { role: 'progressbar', 'aria-label': 'Avancement de l’extrait' }, fill, timeText),
         h('div.actions.disc-actions', prevBtn, playBtn, nextBtn, revealBtn),
-        h('div.field', h('span.label', 'Déjà écoutés'), list)));
+        h('div.actions.disc-rating', likeBtn, dislikeBtn),
+        h('div.field', h('span.label', 'Déjà écoutés'), list),
+        panel));
 
       const a = MQ.player.audio;
       const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
@@ -127,11 +208,12 @@
         link.hidden = !(show && preview.link);
         if (show && preview.link) { link.href = preview.link; link.textContent = 'Écouter en entier sur ' + preview.source; }
         revealBtn.hidden = show;
+        paintRating();
         renderHistory();
       }
 
       function renderHistory() {
-        list.replaceChildren(...history.slice(0, idx).map((x, i) => h('li', h('span.mark', '♪'),
+        list.replaceChildren(...history.slice(0, idx).map((x, i) => h('li', h('span.mark', { 'aria-label': ({ 1: 'aimé', '-1': 'pas aimé' })[ratingOf(x.song)] || '' }, ({ 1: '👍', '-1': '👎' })[ratingOf(x.song)] || '♪'),
           h('span.recap-text', h('strong', x.song.title), ' – ' + x.song.artist + ' · ' + x.song.year),
           h('button.btn.ghost.disc-again', { type: 'button', onclick: () => go(i) }, 'Réécouter'))).reverse());
       }

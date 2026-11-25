@@ -419,3 +419,8 @@ a.game-card:hover { transform: translateY(-2px); border-color: var(--amber); }
 .esc-year { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
 .esc-select { width: auto; padding: 8px 12px; font: 500 15px var(--mono); }
 .reveal-country { margin: 4px 0 0 !important; font: 800 20px/1.2 var(--display); color: var(--amber); }
+.disc-rating { justify-content: center; }
+.disc-rate[aria-pressed="true"] { background: var(--amber); color: #1a1205; border-color: var(--amber); }
+.disc-rate#disc-dislike[aria-pressed="true"] { background: #e0566b; border-color: #e0566b; color: #fff; }
+.disc-ratings { margin-top: 18px; }
+.disc-likes summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
