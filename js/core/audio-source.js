@@ -36,14 +36,28 @@ window.MQ = window.MQ || {};
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
+  // Comparaison par mots entiers (« li » ne correspond plus à « lia »), en ignorant les mentions
+  // entre parenthèses ou après un tiret (« Remastered », « Live », « Radio Edit »…).
+  const STOP = new Set(['the', 'a', 'and', 'le', 'la', 'les', 'l']);
+  const words = s => norm(String(s || '').replace(/\s*[(\[].*?[)\]]\s*/g, ' ').replace(/\s+-\s+.*$/, ''))
+    .split(' ').filter(w => w && !STOP.has(w));
+  const within = (x, y) => x.every(w => y.includes(w));
+  const size = ws => ws.join('').length;
+
   function artistMatches(found, wanted) {
-    const a = norm(found), b = norm(wanted);
-    return a && b && (a.includes(b) || b.includes(a));
+    const f = words(found), w = words(wanted);
+    if (!f.length || !w.length) return false;
+    // « Gims » ↔ « Maître Gims », « Al Bano » ↔ « Al Bano & Romina Power » ; jamais sur un bout de mot.
+    return (within(w, f) && size(w) >= 3) || (within(f, w) && size(f) >= 3);
   }
 
   function titleMatches(found, wanted) {
-    const a = norm(found), b = norm(wanted);
-    return a && b && (a.includes(b) || b.includes(a));
+    const f = words(found), w = words(wanted);
+    if (!f.length || !w.length) return false;
+    if (within(w, f)) return f.length <= w.length + 3;             // titre complet, quelques mots en plus au plus
+    if (within(f, w)) return f.length >= Math.ceil(w.length * 0.6); // titre raccourci, pas un autre titre plus court
+    const common = w.filter(x => f.includes(x)).length;            // petites variantes d'écriture
+    return w.length >= 4 && common / w.length >= 0.75 && common / f.length >= 0.75;
   }
 
   const mainArtist = a => a.split(/\s+(?:featuring|feat\.?|ft\.?|with|duet with|x)\s+/i)[0];
@@ -55,9 +69,9 @@ window.MQ = window.MQ || {};
     const artist = mainArtist(song.artist);
     const title = song.title.replace(/\s*\(.*?\)\s*/g, ' ').trim() || song.title;
     if (noArtist(song)) return items.find(r => titleMatches(r.title, title)) || null;
-    return items.find(r => artistMatches(r.artist, artist) && titleMatches(r.title, title))
-        || items.find(r => artistMatches(r.artist, artist))
-        || null;
+    // L'artiste ET le titre doivent correspondre : sinon on tombe sur un homonyme
+    // (ex. « Gemini », Portugal 1978, remplacé par un groupe chinois du même nom).
+    return items.find(r => artistMatches(r.artist, artist) && titleMatches(r.title, title)) || null;
   }
 
   async function fromItunes(song) {
